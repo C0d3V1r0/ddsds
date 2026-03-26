@@ -29,7 +29,9 @@
 - исправлен runtime-баг в `ws.frontend.broadcast`
 - auth-модель для MVP упрощена и приведена к рабочей схеме
 - Bearer auth API разведен с агентским секретом через отдельный `api.token` / `NULLIUS_API_TOKEN`
+- убран небезопасный fallback `api token -> agent secret`
 - CORS origins вынесены из хардкода в `api.cors_origins`
+- модель реакции на угрозы стала прозрачнее: `logged`, `review_required`, `auto_block`
 
 ### Frontend / Performance
 

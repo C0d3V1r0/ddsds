@@ -107,10 +107,23 @@ python3 -m venv venv
 
 - Dashboard защищён через nginx basic auth.
 - Внутренний Bearer auth и WS token для UI по умолчанию отключены и могут быть включены через `api.require_bearer_auth` и `api.require_ws_token` в `nullius.yaml`.
-- Если Bearer auth включён, используй отдельный `api.token` или env `NULLIUS_API_TOKEN`, а не агентский секрет.
+- Если Bearer auth включён, обязательно задай отдельный `api.token` или env `NULLIUS_API_TOKEN`.
+- API token больше не fallback'ится к `agent.key`/`NULLIUS_AGENT_SECRET`.
 - Разрешённые cross-origin источники задаются через `api.cors_origins`.
 - Агент использует `agent.key`, лежащий рядом с `nullius.yaml`.
 - Основной runtime health-check: `/api/health`.
+
+## Модель реакции на угрозы
+
+- `logged` — событие зафиксировано, но активная реакция не применялась.
+- `review_required` — событие требует внимания оператора, но система не делает autoblock.
+- `auto_block` — IP был автоматически заблокирован.
+
+Текущее поведение по умолчанию:
+
+- rule-based `ssh_brute_force` и `sqli` могут уйти в `auto_block`, если у события есть IP и включён `security.auto_block`
+- `medium` severity и ML-события идут в `review_required`
+- слабые/informational события остаются `logged`
 
 ## Основные команды
 

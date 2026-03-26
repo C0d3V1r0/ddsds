@@ -146,11 +146,12 @@ async def _handle_metrics(msg: dict):
                     "source_ip": "",
                     "description": f"ML anomaly detected (score: {result['score']:.3f})",
                     "raw_log": json.dumps(flat),
+                    "action_taken": "review_required",
                 }
                 await enqueue_write(
                     "INSERT INTO security_events (timestamp, type, severity, source_ip, description, raw_log, action_taken) "
                     "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (ts, event["type"], event["severity"], "", event["description"], event["raw_log"], "ml_detection")
+                    (ts, event["type"], event["severity"], "", event["description"], event["raw_log"], event["action_taken"])
                 )
                 from ws.frontend import broadcast
                 await broadcast({"type": "security_event", "data": event})
@@ -200,11 +201,12 @@ async def _handle_log(msg: dict):
             "source_ip": "",
             "description": f"ML-detected: {ml_event['label']}",
             "raw_log": data.get("line", ""),
+            "action_taken": "review_required",
         }
         await enqueue_write(
             "INSERT INTO security_events (timestamp, type, severity, source_ip, description, raw_log, action_taken) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (ts, event["type"], event["severity"], "", event["description"], event["raw_log"], "ml_detection")
+            (ts, event["type"], event["severity"], "", event["description"], event["raw_log"], event["action_taken"])
         )
         await broadcast({"type": "security_event", "data": event})
         return
@@ -212,13 +214,20 @@ async def _handle_log(msg: dict):
     if event is None:
         return
     ts = msg.get("timestamp", int(time.time()))
+    action = _responder.decide(event)
+    action_taken = "logged"
+    if action["action"] == "review":
+        action_taken = "review_required"
+    elif action["action"] == "block":
+        action_taken = "auto_block"
+
+    event["action_taken"] = action_taken
     await enqueue_write(
         "INSERT INTO security_events (timestamp, type, severity, source_ip, description, raw_log, action_taken) "
         "VALUES (?, ?, ?, ?, ?, ?, ?)",
         (ts, event["type"], event["severity"], event.get("source_ip", ""),
-         event["description"], event.get("raw_log", ""), "")
+         event["description"], event.get("raw_log", ""), action_taken)
     )
-    action = _responder.decide(event)
     if action["action"] == "block":
         # Длительность блокировки берём из конфига, 86400 — фоллбэк по умолчанию
         block_duration = _config.ssh_brute_force.block_duration if _config else DEFAULT_BLOCK_DURATION

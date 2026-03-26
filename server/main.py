@@ -122,10 +122,9 @@ def create_app(
     if config.api.require_bearer_auth:
         api_token = os.environ.get("NULLIUS_API_TOKEN", "").strip() or config.api.token.strip()
         if not api_token:
-            api_token = agent_secret
-            logging.getLogger("nullius").warning(
-                "API Bearer auth использует agent secret как fallback. "
-                "Задайте api.token или NULLIUS_API_TOKEN, чтобы развести контуры доступа."
+            raise RuntimeError(
+                "Bearer auth включён, но api.token / NULLIUS_API_TOKEN не задан. "
+                "Для безопасности API token не должен fallback'иться к agent secret."
             )
     set_api_token(api_token)
 

@@ -12,7 +12,7 @@ def test_low_severity_logs_only(responder):
 
 def test_medium_severity_logs(responder):
     action = responder.decide({"severity": "medium", "source_ip": "10.0.0.1", "type": "test"})
-    assert action["action"] == "log"
+    assert action["action"] == "review"
 
 def test_high_severity_blocks(responder):
     action = responder.decide({"severity": "high", "source_ip": "10.0.0.1", "type": "ssh_brute_force"})
@@ -27,8 +27,8 @@ def test_critical_severity_blocks(responder):
 def test_high_severity_no_block_when_disabled(responder):
     r = Responder(auto_block=False)
     action = r.decide({"severity": "high", "source_ip": "10.0.0.1", "type": "test"})
-    assert action["action"] == "log"
+    assert action["action"] == "review"
 
 def test_no_block_without_ip(responder):
     action = responder.decide({"severity": "high", "source_ip": "", "type": "test"})
-    assert action["action"] == "log"
+    assert action["action"] == "review"

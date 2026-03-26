@@ -16,4 +16,8 @@ class Responder:
                 "highlight": severity == "critical",
             }
 
+        # Medium/high/critical без активной блокировки требуют внимания оператора.
+        if severity in ("medium", "high", "critical"):
+            return {"action": "review"}
+
         return {"action": "log"}

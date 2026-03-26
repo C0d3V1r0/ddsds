@@ -5,8 +5,8 @@ test.describe('Nullius MVP', () => {
     await page.goto('/');
 
     await expect(page.getByTestId('app-brand')).toContainText('NULLIUS');
-    await expect(page.getByTestId('header-agent-status')).toContainText('Агент подключён');
-    await expect(page.getByTestId('header-live-status')).toContainText('Live-канал подключён');
+    await expect(page.getByTestId('header-agent-status')).toHaveCount(0);
+    await expect(page.getByTestId('header-live-status')).toHaveCount(0);
 
     await expect(page.getByTestId('metric-cpu-card')).toBeVisible();
     await expect(page.getByTestId('metric-ram-card')).toBeVisible();

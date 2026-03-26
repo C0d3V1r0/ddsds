@@ -6,6 +6,7 @@ import { Badge } from '../components/ui/Badge';
 import { Table } from '../components/ui/Table';
 import { ErrorBlock, LoadingBlock, StateBlock } from '../components/ui/StateBlock';
 import { t } from '../lib/i18n';
+import { formatActionTaken, formatDateTime, formatEventDescription, formatEventType } from '../lib/format';
 import type { SecurityEvent, BlockedIP } from '../types';
 
 const EVENT_TYPES = ['ssh_brute_force', 'sqli', 'xss', 'path_traversal', 'port_scan', 'anomaly'];
@@ -26,12 +27,12 @@ export function Security() {
 
   const eventColumns = [
     { key: 'severity', header: t.security.severity, render: (row: SecurityEvent) => <Badge variant="severity" value={row.severity} /> },
-    { key: 'type', header: t.security.type },
+    { key: 'type', header: t.security.type, render: (row: SecurityEvent) => formatEventType(row.type) },
     { key: 'source_ip', header: t.security.sourceIp },
-    { key: 'description', header: t.security.description },
-    { key: 'action_taken', header: t.security.action },
+    { key: 'description', header: t.security.description, render: (row: SecurityEvent) => formatEventDescription(row.description, row.type) },
+    { key: 'action_taken', header: t.security.action, render: (row: SecurityEvent) => formatActionTaken(row.action_taken) },
     { key: 'timestamp', header: t.security.time, render: (row: SecurityEvent) => (
-      <span className="text-xs text-text-secondary">{new Date(row.timestamp * 1000).toLocaleString('ru-RU')}</span>
+      <span className="text-xs text-text-secondary">{formatDateTime(row.timestamp)}</span>
     )},
   ];
 
@@ -39,10 +40,10 @@ export function Security() {
     { key: 'ip', header: 'IP' },
     { key: 'reason', header: t.security.reason },
     { key: 'blocked_at', header: t.security.blocked, render: (row: BlockedIP) => (
-      <span className="text-xs text-text-secondary">{new Date(row.blocked_at * 1000).toLocaleString('ru-RU')}</span>
+      <span className="text-xs text-text-secondary">{formatDateTime(row.blocked_at)}</span>
     )},
     { key: 'expires_at', header: t.security.expires, render: (row: BlockedIP) => (
-      <span className="text-xs text-text-secondary">{row.expires_at ? new Date(row.expires_at * 1000).toLocaleString('ru-RU') : t.security.never}</span>
+      <span className="text-xs text-text-secondary">{row.expires_at ? formatDateTime(row.expires_at) : t.security.never}</span>
     )},
     { key: 'auto', header: t.security.auto, render: (row: BlockedIP) => (
       <Badge variant="status" value={row.auto ? 'running' : 'stopped'} />
@@ -82,7 +83,7 @@ export function Security() {
         >
           <option value="">{t.security.allTypes}</option>
           {EVENT_TYPES.map((tp) => (
-            <option key={tp} value={tp}>{tp}</option>
+            <option key={tp} value={tp}>{formatEventType(tp)}</option>
           ))}
         </select>
       </div>

@@ -3,6 +3,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useLogs } from '../hooks/useLogs';
 import { Card } from '../components/ui/Card';
 import { t } from '../lib/i18n';
+import { formatDateTime } from '../lib/format';
 
 const LOG_SOURCES = ['', 'auth', 'nginx', 'syslog'];
 const SUSPICIOUS_PATTERNS = /failed password|invalid user|union select|<script|\.\.\/\.\.\//i;
@@ -71,7 +72,7 @@ export function Logs() {
               className={`py-0.5 px-2 flex gap-3 ${isSuspicious ? 'bg-accent-red/10 text-accent-red' : 'hover:bg-bg-card-hover'}`}
             >
               <span className="text-text-secondary shrink-0 w-44">
-                {new Date(log.timestamp * 1000).toLocaleString('ru-RU')}
+                {formatDateTime(log.timestamp)}
               </span>
               <span className="text-accent-blue shrink-0 w-16">{log.source}</span>
               <span className="break-all">{log.line}</span>

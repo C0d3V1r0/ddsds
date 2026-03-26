@@ -34,6 +34,7 @@ cd dist
 Ожидаемо:
 - установка завершается без ручных hotfix
 - пароль администратора сохранён в `/opt/nullius/config/.initial_password`
+- если в конфиге включён `api.require_bearer_auth`, задан отдельный `api.token` или `NULLIUS_API_TOKEN`
 
 ## 4. Runtime health
 
@@ -65,7 +66,7 @@ python3 testing/smoke/mvp_smoke.py
 
 Проверить:
 - `Обзор`: графики, метрики, статусы
-- `Безопасность`: события, блокировка/разблокировка IP
+- `Безопасность`: события, блокировка/разблокировка IP, корректные action labels (`logged`, `review_required`, `auto_block`)
 - `Процессы`: список процессов
 - `Логи`: новые записи появляются
 - `Настройки`: API/agent/db статусы и переключение темы

@@ -6,6 +6,8 @@ import { Sidebar } from '../components/ui/Sidebar';
 import { Header } from '../components/ui/Header';
 import { connectWS, disconnectWS } from '../lib/ws';
 import { useSystemStatus } from '../hooks/useSystemStatus';
+import { useStore } from '../stores/store';
+import { setLocaleMessages, t } from '../lib/i18n';
 
 const Dashboard = lazy(async () => import('../pages/Dashboard').then((module) => ({ default: module.Dashboard })));
 const Security = lazy(async () => import('../pages/Security').then((module) => ({ default: module.Security })));
@@ -27,19 +29,24 @@ const queryClient = new QueryClient({
 function RouteFallback() {
   return (
     <div className="flex min-h-[240px] items-center justify-center text-sm text-text-secondary">
-      Загрузка страницы...
+      {t.common.pageLoading}
     </div>
   );
 }
 
 function AppShell() {
   useSystemStatus();
+  const locale = useStore((state) => state.locale);
 
   // WS подключаем при монтировании, отключаем при размонтировании
   useEffect(() => {
     connectWS();
     return () => { disconnectWS(); };
   }, []);
+
+  useEffect(() => {
+    setLocaleMessages(locale);
+  }, [locale]);
 
   return (
     <BrowserRouter>

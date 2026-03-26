@@ -10,11 +10,11 @@ import { t } from '../lib/i18n';
 export function Settings() {
   const { data: health, isError: healthError, isLoading: healthLoading } = useQuery({ queryKey: ['health'], queryFn: api.health, refetchInterval: 5000 });
   const { data: mlStatus, isError: mlError, isLoading: mlLoading } = useQuery({ queryKey: ['mlStatus'], queryFn: api.mlStatus, refetchInterval: 10000 });
-  const { theme, toggleTheme } = useStore();
+  const { theme, toggleTheme, locale } = useStore();
 
   // Определяем статус ML-компонентов по ответу API
-  const anomalyStatus = mlStatus?.anomaly_detector?.ready ? 'running' : 'stopped';
-  const classifierStatus = mlStatus?.attack_classifier?.ready ? 'running' : 'stopped';
+  const anomalyStatus = mlStatus?.anomaly_detector?.ready ? 'running' : 'pending';
+  const classifierStatus = mlStatus?.attack_classifier?.ready ? 'running' : 'pending';
 
   return (
     <div data-testid="page-settings" className="space-y-6">
@@ -81,8 +81,8 @@ export function Settings() {
               {t.settings.mlNote}
             </p>
             <StateBlock
-              title="ML-функции пока в режиме ожидания"
-              description="Модели начнут приносить пользу после накопления достаточного объёма данных и фонового обучения."
+              title={t.settings.mlPendingTitle}
+              description={t.settings.mlPendingDescription}
               testId="settings-ml-state"
             />
           </div>
@@ -99,10 +99,10 @@ export function Settings() {
             <p className="text-xs text-text-secondary mt-2">
               {t.settings.mlNote}
             </p>
-            {anomalyStatus === 'stopped' && classifierStatus === 'stopped' && (
+            {(anomalyStatus === 'pending' || classifierStatus === 'pending') && (
               <StateBlock
-                title="ML-функции пока в режиме ожидания"
-                description="Модели начнут приносить пользу после накопления достаточного объёма данных и фонового обучения."
+                title={t.settings.mlPendingTitle}
+                description={t.settings.mlPendingDescription}
                 testId="settings-ml-state"
               />
             )}
@@ -112,9 +112,28 @@ export function Settings() {
 
       {/* Информация */}
       <Card title={t.settings.about} testId="settings-about-card">
-        <div className="space-y-1 text-sm text-text-secondary">
-          <div>{t.settings.version}</div>
-          <div>{t.settings.subtitle}</div>
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <div className="text-base font-semibold text-text-primary">{t.settings.version}</div>
+            <div className="text-sm text-text-secondary">{t.settings.subtitle}</div>
+          </div>
+          <div className="grid gap-3 md:grid-cols-3 text-sm">
+            <div className="rounded-lg border border-border bg-bg-primary/40 px-4 py-3">
+              <div className="text-xs uppercase tracking-wider text-text-secondary">{t.settings.releaseChannel}</div>
+              <div className="mt-1 text-text-primary">{t.settings.betaChannel}</div>
+            </div>
+            <div className="rounded-lg border border-border bg-bg-primary/40 px-4 py-3">
+              <div className="text-xs uppercase tracking-wider text-text-secondary">{t.settings.deploymentMode}</div>
+              <div className="mt-1 text-text-primary">{t.settings.selfHosted}</div>
+            </div>
+            <div className="rounded-lg border border-border bg-bg-primary/40 px-4 py-3">
+              <div className="text-xs uppercase tracking-wider text-text-secondary">{t.settings.uiLanguage}</div>
+              <div className="mt-1 text-text-primary">{locale === 'ru' ? 'Русский' : 'English'}</div>
+            </div>
+          </div>
+          <div className="text-xs text-text-secondary">
+            {t.settings.aboutDescription}
+          </div>
         </div>
       </Card>
     </div>

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Скрипт сборки Nullius: Go agent + React frontend + Python server
-VERSION="${1:-dev}"
+VERSION="${1:-1.0.1-beta}"
 BUILD_DIR="dist"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
