@@ -226,8 +226,10 @@ def check_block_unblock() -> None:
 
 def check_dashboard() -> None:
     html = request_dashboard()
-    if "NULLIUS" not in html:
-        fail("Dashboard HTML does not contain NULLIUS brand")
+    if '<div id="root"></div>' not in html and '<div id="root">' not in html:
+        fail("Dashboard HTML does not contain SPA root container")
+    if "/assets/" not in html:
+        fail("Dashboard HTML does not reference built frontend assets")
     pass_msg("Dashboard HTML is reachable via HTTPS")
 
 
