@@ -1,0 +1,29 @@
+agent:
+  metrics_interval: 5
+  services_interval: 30
+  log_sources:
+    - /var/log/auth.log
+    - /var/log/nginx/access.log
+    - /var/log/nginx/error.log
+
+security:
+  ssh_brute_force:
+    threshold: 5
+    window: 300
+    action: block
+    block_duration: 86400
+  web_attacks:
+    enabled: true
+    action: block
+  auto_block: true
+  allowed_services:
+    - nginx
+    - postgresql
+    - redis
+    - mysql
+    - docker
+
+ml:
+  anomaly_detection: true
+  training_period: 86400
+  sensitivity: medium

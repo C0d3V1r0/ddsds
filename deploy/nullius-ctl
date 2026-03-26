@@ -1,0 +1,332 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# - CLI для управления Nullius
+INSTALL_DIR="/opt/nullius"
+VERSION="2.0.0"
+
+# ============================================================
+# - Вспомогательные функции
+# ============================================================
+
+require_root() {
+    if [[ $EUID -ne 0 ]]; then
+        echo "Требуются права root. Запустите: sudo nullius-ctl $1" >&2
+        exit 1
+    fi
+}
+
+usage() {
+    cat <<EOF
+nullius-ctl v${VERSION} — управление Nullius Security Platform
+
+Использование:
+  nullius-ctl <команда> [опции]
+
+Команды:
+  status          Статус всех компонентов
+  logs [--follow] Просмотр логов (agent + API)
+  config          Редактировать конфиг в \$EDITOR
+  set-password    Сменить пароль дашборда
+  tls --domain X  Настроить Let's Encrypt сертификат
+  update          Обновление (в разработке)
+  reset-ml        Удалить ML-модели и перезапустить API
+  uninstall       Полное удаление Nullius
+
+EOF
+}
+
+# ============================================================
+# - status: статус всех компонентов
+# ============================================================
+
+cmd_status() {
+    echo "=== Nullius Status ==="
+    echo ""
+
+    # - Systemd сервисы
+    echo "--- Сервисы ---"
+    for svc in nullius-agent nullius-api nginx; do
+        if systemctl is-active --quiet "$svc" 2>/dev/null; then
+            echo "  $svc: активен"
+        else
+            echo "  $svc: НЕ АКТИВЕН"
+        fi
+    done
+
+    echo ""
+
+    # - API health check
+    echo "--- API Health ---"
+    if curl -sk --max-time 3 http://127.0.0.1:8000/api/health > /dev/null 2>&1; then
+        HEALTH=$(curl -sk --max-time 3 http://127.0.0.1:8000/api/health 2>/dev/null)
+        echo "  API: OK ($HEALTH)"
+    else
+        echo "  API: недоступен"
+    fi
+
+    echo ""
+
+    # - Диск
+    echo "--- Хранилище ---"
+    if [[ -d "$INSTALL_DIR" ]]; then
+        DISK_USAGE=$(du -sh "$INSTALL_DIR" 2>/dev/null | awk '{print $1}')
+        echo "  $INSTALL_DIR: $DISK_USAGE"
+    fi
+
+    # - БД
+    if [[ -f "$INSTALL_DIR/data/nullius.db" ]]; then
+        DB_SIZE=$(du -sh "$INSTALL_DIR/data/nullius.db" 2>/dev/null | awk '{print $1}')
+        echo "  БД: $DB_SIZE"
+    fi
+
+    # - Логи
+    if [[ -d "$INSTALL_DIR/logs" ]]; then
+        LOGS_SIZE=$(du -sh "$INSTALL_DIR/logs" 2>/dev/null | awk '{print $1}')
+        echo "  Логи: $LOGS_SIZE"
+    fi
+
+    echo ""
+
+    # - TLS
+    echo "--- TLS ---"
+    if [[ -f "$INSTALL_DIR/config/tls/cert.pem" ]]; then
+        EXPIRY=$(openssl x509 -enddate -noout -in "$INSTALL_DIR/config/tls/cert.pem" 2>/dev/null | cut -d= -f2)
+        echo "  Сертификат до: $EXPIRY"
+    else
+        echo "  Сертификат: не найден"
+    fi
+}
+
+# ============================================================
+# - logs: просмотр логов
+# ============================================================
+
+cmd_logs() {
+    local follow_flag=""
+
+    if [[ "${1:-}" == "--follow" || "${1:-}" == "-f" ]]; then
+        follow_flag="-f"
+    fi
+
+    if [[ -n "$follow_flag" ]]; then
+        echo "=== Логи Nullius (Ctrl+C для выхода) ==="
+        tail -f "$INSTALL_DIR/logs/agent.log" "$INSTALL_DIR/logs/api.log" 2>/dev/null
+    else
+        echo "=== Agent Log (последние 30 строк) ==="
+        tail -30 "$INSTALL_DIR/logs/agent.log" 2>/dev/null || echo "  Файл не найден"
+        echo ""
+        echo "=== API Log (последние 30 строк) ==="
+        tail -30 "$INSTALL_DIR/logs/api.log" 2>/dev/null || echo "  Файл не найден"
+    fi
+}
+
+# ============================================================
+# - config: редактирование конфига
+# ============================================================
+
+cmd_config() {
+    require_root "config"
+
+    local config_file="$INSTALL_DIR/config/nullius.yaml"
+
+    if [[ ! -f "$config_file" ]]; then
+        echo "Конфиг не найден: $config_file" >&2
+        exit 1
+    fi
+
+    local editor="${EDITOR:-nano}"
+    if ! command -v "$editor" &>/dev/null; then
+        echo "ОШИБКА: Редактор '$editor' не найден. Установите его или задайте EDITOR." >&2
+        exit 1
+    fi
+    "$editor" "$config_file"
+
+    echo "Перезапустить сервисы для применения? [y/N] "
+    read -r confirm
+    if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+        systemctl restart nullius-api nullius-agent
+        echo "Сервисы перезапущены."
+    fi
+}
+
+# ============================================================
+# - set-password: смена пароля дашборда
+# ============================================================
+
+cmd_set_password() {
+    require_root "set-password"
+
+    local htpasswd_file="$INSTALL_DIR/config/.htpasswd"
+
+    echo -n "Новый пароль для admin: "
+    read -rs new_pass
+    echo ""
+
+    if [[ -z "$new_pass" ]]; then
+        echo "Пароль не может быть пустым." >&2
+        exit 1
+    fi
+
+    if [[ ${#new_pass} -lt 8 ]]; then
+        echo "Минимальная длина пароля: 8 символов." >&2
+        exit 1
+    fi
+
+    htpasswd -cb "$htpasswd_file" admin "$new_pass"
+    chmod 600 "$htpasswd_file"
+    chown nullius:nullius "$htpasswd_file"
+
+    echo "Пароль обновлён. Перезагрузка nginx..."
+    systemctl reload nginx
+    echo "Готово."
+}
+
+# ============================================================
+# - tls: настройка Let's Encrypt
+# ============================================================
+
+cmd_tls() {
+    require_root "tls"
+
+    local domain=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --domain) domain="${2:-}"; shift 2 ;;
+            *) echo "Неизвестная опция: $1" >&2; exit 1 ;;
+        esac
+    done
+
+    if [[ -z "$domain" ]]; then
+        echo "Использование: nullius-ctl tls --domain example.com" >&2
+        exit 1
+    fi
+
+    # - Валидация домена
+    if [[ ! "$domain" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+        echo "ОШИБКА: Некорректный домен: $domain" >&2
+        exit 1
+    fi
+
+    # - Установка certbot если нет
+    if ! command -v certbot &>/dev/null; then
+        echo "Установка certbot..."
+        apt-get update -qq
+        apt-get install -y -qq certbot python3-certbot-nginx > /dev/null
+    fi
+
+    echo "Получение сертификата для $domain..."
+    certbot --nginx -d "$domain" --non-interactive --agree-tos --register-unsafely-without-email
+
+    # - Обновление nginx-конфига с реальным доменом
+    sed -i "s/server_name _;/server_name $domain;/" /etc/nginx/sites-available/nullius
+    nginx -t && systemctl reload nginx
+
+    echo "TLS настроен для $domain"
+    echo "Автопродление: certbot уже добавлен в systemd timers"
+}
+
+# ============================================================
+# - update: обновление (заглушка)
+# ============================================================
+
+cmd_update() {
+    require_root "update"
+
+    echo "=== Обновление Nullius ==="
+    echo ""
+    echo "Автоматическое обновление пока не реализовано."
+    echo ""
+    echo "Для ручного обновления:"
+    echo "  1. Скачайте новую версию"
+    echo "  2. Распакуйте в директорию"
+    echo "  3. Запустите: sudo bash install.sh"
+    echo ""
+    echo "Установщик идемпотентен — существующие конфиги и данные сохранятся."
+}
+
+# ============================================================
+# - reset-ml: сброс ML-моделей
+# ============================================================
+
+cmd_reset_ml() {
+    require_root "reset-ml"
+
+    echo "Удалить ML-модели и перезапустить API? [y/N] "
+    read -r confirm
+    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+        echo "Отменено."
+        exit 0
+    fi
+
+    echo "Удаление моделей..."
+    rm -rf "$INSTALL_DIR/models/"*
+
+    echo "Перезапуск API..."
+    systemctl restart nullius-api
+
+    echo "ML-модели удалены. API переобучит модели автоматически."
+}
+
+# ============================================================
+# - uninstall: полное удаление
+# ============================================================
+
+cmd_uninstall() {
+    require_root "uninstall"
+
+    local uninstall_script="$INSTALL_DIR/../nullius-uninstall.sh"
+
+    # - Используем встроенный скрипт если есть, иначе копию из /opt
+    if [[ -f "/opt/nullius/deploy/uninstall.sh" ]]; then
+        bash "/opt/nullius/deploy/uninstall.sh"
+    elif [[ -f "$(dirname "$0")/uninstall.sh" ]]; then
+        bash "$(dirname "$0")/uninstall.sh"
+    else
+        # - Встроенная логика удаления
+        echo "=== Удаление Nullius ==="
+        read -p "Удалить Nullius и все данные? [y/N] " confirm
+        if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+            echo "Отменено."
+            exit 0
+        fi
+
+        systemctl stop nullius-agent nullius-api 2>/dev/null || true
+        systemctl disable nullius-agent nullius-api 2>/dev/null || true
+        rm -f /etc/systemd/system/nullius-agent.service
+        rm -f /etc/systemd/system/nullius-api.service
+        systemctl daemon-reload
+        rm -f /etc/nginx/sites-enabled/nullius
+        rm -f /etc/nginx/sites-available/nullius
+        nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null || true
+        rm -f /etc/logrotate.d/nullius
+        rm -rf /opt/nullius
+        rm -f /usr/local/bin/nullius-ctl
+        echo "=== Nullius удалён ==="
+    fi
+}
+
+# ============================================================
+# - Роутинг команд
+# ============================================================
+
+COMMAND="${1:-}"
+shift || true
+
+case "$COMMAND" in
+    status)       cmd_status ;;
+    logs)         cmd_logs "$@" ;;
+    config)       cmd_config ;;
+    set-password) cmd_set_password ;;
+    tls)          cmd_tls "$@" ;;
+    update)       cmd_update ;;
+    reset-ml)     cmd_reset_ml ;;
+    uninstall)    cmd_uninstall ;;
+    -h|--help|"") usage ;;
+    *)
+        echo "Неизвестная команда: $COMMAND" >&2
+        echo "Запустите: nullius-ctl --help" >&2
+        exit 1
+        ;;
+esac

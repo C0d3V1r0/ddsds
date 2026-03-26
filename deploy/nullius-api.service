@@ -1,0 +1,31 @@
+[Unit]
+Description=Nullius API Server
+After=network.target
+
+[Service]
+Type=simple
+User=nullius
+Group=nullius
+WorkingDirectory=/opt/nullius/server
+ExecStart=/opt/nullius/server/venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=5
+StandardOutput=append:/opt/nullius/logs/api.log
+StandardError=append:/opt/nullius/logs/api.log
+MemoryMax=512M
+CPUQuota=25%
+Environment=NULLIUS_CONFIG=/opt/nullius/config/nullius.yaml
+Environment=NULLIUS_DB=/opt/nullius/data/nullius.db
+
+# - Hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/nullius/data /opt/nullius/logs /opt/nullius/server/ml/models
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

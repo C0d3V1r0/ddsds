@@ -1,0 +1,11 @@
+.superpowers/
+server/venv/
+*.pyc
+__pycache__/
+server/ml/models/*.joblib
+dist/
+web/node_modules/
+web/dist/
+.DS_Store
+server/.pytest_cache/
+server/data/*.db

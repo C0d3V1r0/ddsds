@@ -1,0 +1,28 @@
+[Unit]
+Description=Nullius Security Agent
+After=network.target nullius-api.service
+Wants=nullius-api.service
+
+[Service]
+Type=simple
+ExecStart=/opt/nullius/bin/nullius-agent /opt/nullius/config/nullius.yaml /opt/nullius/config/agent.key
+Restart=always
+RestartSec=5
+User=root
+StandardOutput=append:/opt/nullius/logs/agent.log
+StandardError=append:/opt/nullius/logs/agent.log
+MemoryMax=128M
+CPUQuota=10%
+
+# - Hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/nullius/logs
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_KILL CAP_DAC_READ_SEARCH
+AmbientCapabilities=CAP_NET_ADMIN CAP_KILL CAP_DAC_READ_SEARCH
+
+[Install]
+WantedBy=multi-user.target

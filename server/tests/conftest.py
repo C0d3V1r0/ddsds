@@ -1,0 +1,60 @@
+import pytest
+import pytest_asyncio
+from httpx import AsyncClient, ASGITransport
+from pathlib import Path
+
+# - Добавляем server/ в sys.path для корректного импорта модулей
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+
+@pytest.fixture
+def test_config_path(tmp_path):
+    config = """
+agent:
+  metrics_interval: 5
+  services_interval: 30
+  log_sources: []
+security:
+  ssh_brute_force:
+    threshold: 3
+    window: 60
+    action: block
+    block_duration: 3600
+  web_attacks:
+    enabled: true
+    action: block
+  auto_block: true
+  allowed_services:
+    - nginx
+    - test-service
+ml:
+  anomaly_detection: false
+  training_period: 86400
+  sensitivity: medium
+"""
+    p = tmp_path / "nullius.yaml"
+    p.write_text(config)
+    return str(p)
+
+
+TEST_AGENT_SECRET = "test-secret-for-tests"
+
+
+@pytest_asyncio.fixture
+async def test_app(tmp_path, test_config_path, monkeypatch):
+    from main import create_app
+    from db import init_db
+    from api.auth import set_api_token
+    # - Задаём секрет агента через env для предсказуемости тестов
+    monkeypatch.setenv("NULLIUS_AGENT_SECRET", TEST_AGENT_SECRET)
+    db_path = str(tmp_path / "test.db")
+    # - Явно инициализируем БД, т.к. lifespan не запускается в тестовом транспорте
+    await init_db(db_path)
+    app = await create_app(
+        config_path=test_config_path,
+        db_path=db_path
+    )
+    # - Отключаем API-аутентификацию для тестов (пустой токен пропускает проверку)
+    set_api_token("")
+    yield app
