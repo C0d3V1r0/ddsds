@@ -1,4 +1,4 @@
-# - Тесты expiry: удаление IP с истёкшим сроком блокировки
+# Тесты expiry: удаление IP с истёкшим сроком блокировки
 import pytest
 import time
 from db import init_db, get_db, start_writer, stop_writer
@@ -11,25 +11,25 @@ async def test_expire_removes_expired_ips(tmp_path):
     db_path = str(tmp_path / "test.db")
     await init_db(db_path)
 
-    # - Запускаем writer loop, чтобы enqueue_write реально выполнялся
+    # Запускаем writer loop, чтобы enqueue_write реально выполнялся
     writer_task = await start_writer(db_path)
 
     conn = await get_db()
     now = int(time.time())
 
-    # - IP с истёкшим сроком — должен быть удалён
+    # IP с истёкшим сроком — должен быть удалён
     await conn.execute(
         "INSERT INTO blocked_ips (ip, reason, blocked_at, expires_at, auto) "
         "VALUES (?, ?, ?, ?, ?)",
         ("10.0.0.1", "test", now - 7200, now - 3600, 1),
     )
-    # - IP с активным сроком — должен остаться
+    # IP с активным сроком — должен остаться
     await conn.execute(
         "INSERT INTO blocked_ips (ip, reason, blocked_at, expires_at, auto) "
         "VALUES (?, ?, ?, ?, ?)",
         ("10.0.0.2", "test", now, now + 3600, 1),
     )
-    # - Бессрочная блокировка (expires_at=NULL) — должна остаться
+    # Бессрочная блокировка (expires_at=NULL) — должна остаться
     await conn.execute(
         "INSERT INTO blocked_ips (ip, reason, blocked_at, auto) "
         "VALUES (?, ?, ?, ?)",
@@ -41,7 +41,7 @@ async def test_expire_removes_expired_ips(tmp_path):
     expired = await expire_blocked_ips(db_path)
     assert expired == ["10.0.0.1"]
 
-    # - Останавливаем writer, дожидаясь обработки всех запросов в очереди
+    # Останавливаем writer, дожидаясь обработки всех запросов в очереди
     await stop_writer(writer_task)
 
     conn = await get_db()

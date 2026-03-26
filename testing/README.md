@@ -8,9 +8,9 @@
   Проверяет system/API/functionality:
   health, metrics, services, processes, logs, security API, block/unblock IP,
   появление временного процесса и тестовой лог-записи.
-- `e2e/playwright.config.ts`
+- `../web/e2e/playwright.config.ts`
   Конфиг Playwright для проверки UI.
-- `e2e/mvp.spec.ts`
+- `../web/e2e/mvp.spec.ts`
   E2E smoke-набор для UI: dashboard, navigation, settings, security workflow.
 - `run_mvp_suite.sh`
   Оркестратор полного прогона.
@@ -18,9 +18,16 @@
 ## Быстрый запуск на сервере
 
 ```bash
-cd ~/ddsds
 python3 testing/smoke/mvp_smoke.py
-cd web && npx playwright test -c ../testing/e2e/playwright.config.ts
+cd web && npm ci --include=dev && npx playwright test -c e2e/playwright.config.ts
+```
+
+Если запускаешь server unit/integration тесты локально, ставь dev-зависимости Python отдельно:
+
+```bash
+cd server
+python3 -m venv venv
+./venv/bin/pip install -r requirements-dev.txt
 ```
 
 Или одной командой:

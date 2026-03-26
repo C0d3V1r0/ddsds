@@ -8,7 +8,7 @@ import (
 	"github.com/nullius/agent/config"
 )
 
-// - проверяет корректный парсинг полного yaml-конфига
+// Полный YAML — все поля должны распарситься корректно
 func TestLoadConfig(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "nullius.yaml")
@@ -41,7 +41,7 @@ security:
 	}
 }
 
-// - проверяет что при частичном конфиге неуказанные поля сохраняют дефолты
+// Частичный конфиг — неуказанные поля должны остаться дефолтными
 func TestLoadConfigDefaults(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "nullius.yaml")
@@ -65,7 +65,7 @@ func TestLoadConfigDefaults(t *testing.T) {
 	}
 }
 
-// - проверяет что TLS и ProcessesInterval корректно парсятся из yaml
+// TLS и processes_interval из YAML
 func TestLoadConfigTLSAndProcesses(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "nullius.yaml")
@@ -88,7 +88,7 @@ agent:
 	}
 }
 
-// - проверяет что при отсутствии файла возвращаются дефолты без ошибки
+// Файл не существует — не ошибка, просто дефолты (первый запуск без конфига)
 func TestLoadConfigMissingFile(t *testing.T) {
 	cfg, err := config.Load("/nonexistent/path/to/config.yaml")
 	if err != nil {

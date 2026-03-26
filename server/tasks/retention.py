@@ -1,15 +1,15 @@
-# - Фоновая задача: очистка устаревших данных по retention-политике
+# Фоновая задача: очистка устаревших данных по retention-политике
 import time
 import aiosqlite
 
-# - Максимальный возраст записей в секундах для каждой таблицы
+# Максимальный возраст записей в секундах для каждой таблицы
 RETENTION: dict[str, int] = {
     "metrics": 30 * 86400,
     "security_events": 90 * 86400,
     "agent_commands": 30 * 86400,
 }
 
-# - Захардкоженные запросы для защиты от SQL-инъекции через имя таблицы
+# Захардкоженные запросы для защиты от SQL-инъекции через имя таблицы
 _CLEANUP_QUERIES: dict[str, str] = {
     "metrics": "DELETE FROM metrics WHERE timestamp < ?",
     "security_events": "DELETE FROM security_events WHERE timestamp < ?",
@@ -18,7 +18,7 @@ _CLEANUP_QUERIES: dict[str, str] = {
 
 
 async def cleanup_old_data(db_path: str) -> dict[str, int]:
-    """- Удаляет записи старше retention-порога, возвращает кол-во удалённых по таблицам."""
+    """Удаляет записи старше retention-порога, возвращает кол-во удалённых по таблицам."""
     now = int(time.time())
     deleted: dict[str, int] = {}
 

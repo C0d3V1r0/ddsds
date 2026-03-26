@@ -1,7 +1,0 @@
-interface:
-  display_name: "Fullstack Dev 2"
-  short_description: "Parallel developer for isolated changes"
-  default_prompt: "Use $senior-fullstack-developer-2 for a separate implementation stream with clear file ownership."
-
-policy:
-  allow_implicit_invocation: true

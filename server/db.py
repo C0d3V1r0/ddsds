@@ -8,7 +8,7 @@ import aiosqlite
 
 _logger = logging.getLogger("nullius.db")
 
-# - Ограничение очереди для защиты от переполнения памяти при высокой нагрузке
+# Ограничение очереди — защита от переполнения памяти при высокой нагрузке
 _write_queue: asyncio.Queue[tuple[Optional[str], tuple[object, ...]]] = asyncio.Queue(maxsize=10000)
 _db_path: Optional[str] = None
 
@@ -74,19 +74,19 @@ async def _writer_loop(db_path: str) -> None:
                 sql, params = await _write_queue.get()
                 if sql is None:
                     break
-                # - Три попытки с экспоненциальной задержкой при ошибке
+                # Три попытки с экспоненциальной задержкой при ошибке
                 for attempt in range(3):
                     try:
                         await conn.execute(sql, params)
                         await conn.commit()
                         break
                     except Exception as e:
-                        _logger.warning(f"# - Ошибка записи в БД (попытка {attempt + 1}/3): {e}")
+                        _logger.warning(f"Ошибка записи в БД (попытка {attempt + 1}/3): {e}")
                         if attempt == 2:
                             raise
                         await asyncio.sleep(0.01 * (2 ** attempt))
     except Exception:
-        _logger.error("# - Writer loop завершился с ошибкой", exc_info=True)
+        _logger.error("Writer loop завершился с ошибкой", exc_info=True)
 
 
 async def start_writer(db_path: str) -> asyncio.Task[None]:

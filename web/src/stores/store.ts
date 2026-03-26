@@ -1,4 +1,4 @@
-// - Глобальное состояние приложения (Zustand)
+// Глобальное состояние приложения (Zustand)
 import { create } from 'zustand';
 import type { Metrics, SecurityEvent } from '../types';
 
@@ -24,7 +24,7 @@ export const useStore = create<NulliusStore>((set) => ({
 
   toggleTheme: () => set((state) => {
     const next = state.theme === 'dark' ? 'light' : 'dark';
-    // - Обновляем data-атрибут для CSS-переменных светлой темы
+    // Обновляем data-атрибут для CSS-переменных светлой темы
     document.documentElement.dataset.theme = next;
     return { theme: next };
   }),
@@ -33,7 +33,7 @@ export const useStore = create<NulliusStore>((set) => ({
   setLiveStatus: (status) => set({ liveStatus: status }),
   setCurrentMetrics: (metrics) => set({ currentMetrics: metrics }),
 
-  // - Храним последние 50 событий для отображения в реальном времени
+  // Храним последние 50 событий для отображения в реальном времени
   addSecurityEvent: (event) => set((state) => ({
     recentEvents: [event, ...state.recentEvents].slice(0, 50),
   })),

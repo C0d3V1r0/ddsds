@@ -16,7 +16,7 @@ export function Sidebar() {
       <div data-testid="app-brand" className="text-xl font-bold tracking-widest text-text-primary px-3 mb-8">
         NULLIUS
       </div>
-      <nav className="flex flex-col gap-1">
+      <nav className="flex flex-col gap-1" aria-label="Основная навигация">
         {navItems.map((item) => (
           <NavLink
             key={item.path}
@@ -31,7 +31,7 @@ export function Sidebar() {
               }`
             }
           >
-            <span className="text-base">{item.icon}</span>
+            <span className="text-base" aria-hidden="true">{item.icon}</span>
             {item.label}
           </NavLink>
         ))}

@@ -8,7 +8,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// - конфигурация интервалов сбора и источников логов агента
+// AgentConfig — интервалы опроса, источники логов и адрес API-сервера.
+// Все интервалы в секундах.
 type AgentConfig struct {
 	MetricsInterval   int      `yaml:"metrics_interval"`
 	ServicesInterval  int      `yaml:"services_interval"`
@@ -18,18 +19,19 @@ type AgentConfig struct {
 	TLSSkipVerify     bool     `yaml:"tls_skip_verify"`
 }
 
-// - список разрешённых сервисов для мониторинга
+// SecurityConfig — whitelist сервисов, которые агент имеет право рестартить
 type SecurityConfig struct {
 	AllowedServices []string `yaml:"allowed_services"`
 }
 
-// - корневая структура конфигурации агента
+// Config — корневая структура конфигурации агента из nullius.yaml
 type Config struct {
 	Agent    AgentConfig    `yaml:"agent"`
 	Security SecurityConfig `yaml:"security"`
 }
 
-// - загружает конфиг из yaml-файла, при отсутствии файла возвращает дефолты
+// Load читает YAML-конфиг. Если файл не найден — молча возвращает дефолты.
+// Это нормальное поведение: при первом запуске конфига может ещё не быть.
 func Load(path string) (*Config, error) {
 	cfg := &Config{
 		Agent: AgentConfig{
@@ -47,11 +49,10 @@ func Load(path string) (*Config, error) {
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		// - файл не найден — используем дефолтные значения
 		if errors.Is(err, os.ErrNotExist) {
 			return cfg, nil
 		}
-		return nil, fmt.Errorf("// - Ошибка чтения конфига: %w", err)
+		return nil, fmt.Errorf("ошибка чтения конфига: %w", err)
 	}
 
 	err = yaml.Unmarshal(data, cfg)

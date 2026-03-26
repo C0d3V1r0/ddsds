@@ -17,7 +17,7 @@ CPUQuota=25%
 Environment=NULLIUS_CONFIG=/opt/nullius/config/nullius.yaml
 Environment=NULLIUS_DB=/opt/nullius/data/nullius.db
 
-# - Hardening
+# Hardening
 NoNewPrivileges=yes
 ProtectSystem=strict
 ReadWritePaths=/opt/nullius/data /opt/nullius/logs /opt/nullius/server/ml/models

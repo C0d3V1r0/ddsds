@@ -179,7 +179,7 @@ def check_log_collection() -> None:
     try:
         urllib.request.urlopen(req, timeout=5, context=SSL_CONTEXT)
     except urllib.error.HTTPError:
-        # - 404 тоже подходит: nginx access log всё равно должен содержать запрос
+        # 404 тоже подходит — nginx access log всё равно зафиксирует запрос
         pass
     except Exception as exc:
         fail(f"Failed to generate nginx access log entry: {exc}")

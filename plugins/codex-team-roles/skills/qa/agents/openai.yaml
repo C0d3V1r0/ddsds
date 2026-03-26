@@ -1,7 +1,0 @@
-interface:
-  display_name: "QA"
-  short_description: "Finds bugs, regressions, and testing gaps"
-  default_prompt: "Use $qa to review this implementation and list the most important findings first."
-
-policy:
-  allow_implicit_invocation: true

@@ -1,10 +1,10 @@
-# - Тесты извлечения признаков из метрик и логов
+# Тесты извлечения признаков из метрик и логов
 import pytest
 from ml.features import extract_metrics_features, extract_log_features
 
 
 def test_extract_metrics_features_basic():
-    """- Проверяет корректность извлечения признаков из стандартных метрик"""
+    """Проверяет корректность извлечения признаков из стандартных метрик"""
     raw = {
         "cpu_total": 45.0,
         "ram_used": 4096,
@@ -24,7 +24,7 @@ def test_extract_metrics_features_basic():
 
 
 def test_extract_metrics_features_missing_fields():
-    """- Проверяет обработку пустого словаря метрик"""
+    """Проверяет обработку пустого словаря метрик"""
     features = extract_metrics_features({})
     assert len(features) == 6
     assert features[0] == 0.0
@@ -32,7 +32,7 @@ def test_extract_metrics_features_missing_fields():
 
 
 def test_extract_metrics_features_list_load_avg():
-    """- Проверяет обработку load_avg как списка вместо строки"""
+    """Проверяет обработку load_avg как списка вместо строки"""
     raw = {
         "cpu_total": 10.0,
         "ram_used": 1024,
@@ -46,7 +46,7 @@ def test_extract_metrics_features_list_load_avg():
 
 
 def test_extract_log_features():
-    """- Проверяет нормализацию строки лога"""
+    """Проверяет нормализацию строки лога"""
     line = "  Failed Password for Root from 10.0.0.1 port 22 ssh2  "
     text = extract_log_features(line)
     assert isinstance(text, str)
@@ -54,6 +54,6 @@ def test_extract_log_features():
 
 
 def test_extract_log_features_empty():
-    """- Проверяет обработку пустой строки"""
+    """Проверяет обработку пустой строки"""
     assert extract_log_features("") == ""
     assert extract_log_features("   ") == ""

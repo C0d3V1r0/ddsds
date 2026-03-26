@@ -1,16 +1,16 @@
-# - Тесты детектора аномалий на базе Isolation Forest
+# Тесты детектора аномалий на базе Isolation Forest
 import numpy as np
 from ml.anomaly import AnomalyDetector
 
 
 def test_detector_not_ready_before_training():
-    """- Проверяет что детектор не готов до обучения"""
+    """Проверяет что детектор не готов до обучения"""
     detector = AnomalyDetector()
     assert detector.is_ready() is False
 
 
 def test_detector_predict_before_training():
-    """- Проверяет безопасный ответ до обучения"""
+    """Проверяет безопасный ответ до обучения"""
     detector = AnomalyDetector()
     result = detector.predict([30, 50, 1000, 500, 1.0, 1500])
     assert result["is_anomaly"] is False
@@ -18,7 +18,7 @@ def test_detector_predict_before_training():
 
 
 def test_detector_train_and_predict_normal():
-    """- Проверяет что нормальные данные не детектируются как аномалии"""
+    """Проверяет что нормальные данные не детектируются как аномалии"""
     detector = AnomalyDetector()
     np.random.seed(42)
     normal_data = np.random.normal(
@@ -33,7 +33,7 @@ def test_detector_train_and_predict_normal():
 
 
 def test_detector_detects_anomaly():
-    """- Проверяет что экстремальные значения определяются как аномалия"""
+    """Проверяет что экстремальные значения определяются как аномалия"""
     detector = AnomalyDetector()
     np.random.seed(42)
     normal_data = np.random.normal(
@@ -47,7 +47,7 @@ def test_detector_detects_anomaly():
 
 
 def test_detector_save_load(tmp_path):
-    """- Проверяет сохранение и загрузку модели с диска"""
+    """Проверяет сохранение и загрузку модели с диска"""
     detector = AnomalyDetector()
     np.random.seed(42)
     data = np.random.normal(
@@ -63,7 +63,7 @@ def test_detector_save_load(tmp_path):
     detector_loaded.load(path)
     assert detector_loaded.is_ready() is True
 
-    # - Проверяем что загруженная модель даёт те же результаты
+    # Проверяем что загруженная модель даёт те же результаты
     result_original = detector.predict([30, 50, 1000, 500, 1.0, 1500])
     result_loaded = detector_loaded.predict([30, 50, 1000, 500, 1.0, 1500])
     assert result_original["is_anomaly"] == result_loaded["is_anomaly"]

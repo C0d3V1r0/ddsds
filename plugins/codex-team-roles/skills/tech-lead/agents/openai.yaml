@@ -1,7 +1,0 @@
-interface:
-  display_name: "Tech Lead"
-  short_description: "Plans architecture and coordinates execution"
-  default_prompt: "Use $tech-lead to decompose this task, identify risks, and prepare an execution plan."
-
-policy:
-  allow_implicit_invocation: true

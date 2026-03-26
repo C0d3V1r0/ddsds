@@ -1,11 +1,11 @@
-# - API метрик: текущее состояние и история
+# API метрик: текущее состояние и история
 import time
 from fastapi import APIRouter, HTTPException
 from db import get_db
 
 router = APIRouter()
 
-# - Маппинг строковых периодов в секунды
+# Маппинг строковых периодов в секунды
 PERIOD_SECONDS = {
     "5m": 300,
     "15m": 900,
@@ -34,7 +34,7 @@ async def get_current_metrics():
 
 @router.get("/api/metrics/history")
 async def get_metrics_history(period: str = "1h"):
-    """- Возвращает метрики за указанный период."""
+    """Возвращает метрики за указанный период."""
     if period not in PERIOD_SECONDS:
         raise HTTPException(status_code=400, detail=f"Invalid period. Allowed: {', '.join(PERIOD_SECONDS)}")
     seconds = PERIOD_SECONDS[period]

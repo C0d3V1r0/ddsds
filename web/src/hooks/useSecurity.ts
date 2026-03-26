@@ -1,4 +1,4 @@
-// - Хуки для загрузки security-событий и заблокированных IP
+// Хуки для загрузки security-событий и управления блокировками IP
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 

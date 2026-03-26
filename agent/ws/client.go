@@ -13,7 +13,7 @@ import (
 	"github.com/nullius/agent/buffer"
 )
 
-// - Ограничение частоты выполнения команд (token bucket)
+// Лимит команд в секунду — простой token bucket, чтобы сервер не задавил агента пачкой команд
 const maxCommandsPerSecond = 10
 
 var (
@@ -22,7 +22,8 @@ var (
 	commandMu       sync.Mutex
 )
 
-// - Проверяет, можно ли выполнить команду с учётом rate limit
+// canExecuteCommand проверяет, не превышен ли rate limit на выполнение команд.
+// Пополняет токены пропорционально прошедшему времени.
 func canExecuteCommand() bool {
 	commandMu.Lock()
 	defer commandMu.Unlock()
@@ -40,17 +41,22 @@ func canExecuteCommand() bool {
 	return true
 }
 
+// Client — WebSocket-клиент агента. Держит постоянное соединение с API-сервером,
+// отправляет телеметрию и принимает команды (block_ip, kill_process и т.д.).
+// При обрыве переподключается с экспоненциальным backoff.
 type Client struct {
-	url            string
-	secret         string
-	tlsSkipVerify  bool
-	conn           *websocket.Conn
-	mu             sync.Mutex
-	writeMu        sync.Mutex // - защита от конкурентной записи в websocket (gorilla запрещает)
-	connected      bool
-	buffer         *buffer.RingBuffer
-	heartbeatDone  chan struct{} // - сигнал остановки горутины heartbeat
-	onCommand      func(id string, command string, params map[string]interface{})
+	url           string
+	secret        string
+	tlsSkipVerify bool
+	conn          *websocket.Conn
+	mu            sync.Mutex
+	writeMu       sync.Mutex // gorilla/websocket не потокобезопасен на запись — нужен отдельный мьютекс
+	connected     bool
+	buffer        *buffer.RingBuffer // кольцевой буфер для сообщений, накопленных офлайн
+	heartbeatDone chan struct{}
+	done          chan struct{}
+	closeOnce     sync.Once
+	onCommand     func(id string, command string, params map[string]interface{})
 }
 
 func NewClient(url, secret string, tlsSkipVerify bool, onCommand func(string, string, map[string]interface{})) *Client {
@@ -59,22 +65,48 @@ func NewClient(url, secret string, tlsSkipVerify bool, onCommand func(string, st
 		secret:        secret,
 		tlsSkipVerify: tlsSkipVerify,
 		buffer:        buffer.New(1000),
+		done:          make(chan struct{}),
 		onCommand:     onCommand,
 	}
 }
 
+// Run — основной цикл: подключение → чтение → реконнект. Блокирует горутину.
+// Backoff: 1с → 2с → 4с → ... → 60с (максимум)
 func (c *Client) Run() {
+	delay := time.Second
 	for {
-		err := c.connect()
-		if err != nil {
-			log.Printf("// - Ошибка подключения WS: %v", err)
+		select {
+		case <-c.done:
+			return
+		default:
 		}
-		c.reconnect()
+
+		err := c.connect()
+		if err == nil {
+			delay = time.Second
+		} else {
+			log.Printf("Ошибка подключения WS: %v", err)
+		}
+
+		log.Printf("Реконнект через %v...", delay)
+		select {
+		case <-c.done:
+			return
+		case <-time.After(delay):
+		}
+		if delay < 60*time.Second {
+			delay *= 2
+			if delay > 60*time.Second {
+				delay = 60 * time.Second
+			}
+		}
 	}
 }
 
+// connect устанавливает WS-соединение, проходит аутентификацию,
+// сбрасывает накопленный буфер и входит в цикл чтения команд.
 func (c *Client) connect() error {
-	// - Настраиваем TLS: минимум TLS 1.2, опциональный skip verify для dev-окружения
+	// TLS: минимум 1.2, skip verify только для dev-стенда
 	dialer := websocket.Dialer{
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: c.tlsSkipVerify,
@@ -83,7 +115,7 @@ func (c *Client) connect() error {
 		HandshakeTimeout: 10 * time.Second,
 	}
 
-	// - Аутентификация: передаём секрет в HTTP-заголовке и первом сообщении (обратная совместимость)
+	// Секрет передаём и в заголовке, и в первом сообщении — обратная совместимость
 	headers := http.Header{}
 	headers.Set("Authorization", "Bearer "+c.secret)
 	conn, _, err := dialer.Dial(c.url, headers)
@@ -94,7 +126,7 @@ func (c *Client) connect() error {
 	c.conn = conn
 	c.mu.Unlock()
 
-	// - Также отправляем auth-сообщение для совместимости со старым сервером
+	// Auth-сообщение для старых версий сервера, которые не читают заголовок
 	auth := map[string]string{"type": "auth", "secret": c.secret}
 	c.writeMu.Lock()
 	err = conn.WriteJSON(auth)
@@ -117,16 +149,16 @@ func (c *Client) connect() error {
 	c.mu.Lock()
 	c.connected = true
 	c.mu.Unlock()
-	log.Println("// - Подключен к API")
+	log.Println("Подключен к API-серверу")
 
-	// - Отправляем буферизованные сообщения с проверкой ошибок
+	// Отправляем то, что накопилось в буфере за время офлайна
 	buffered := c.buffer.DrainAll()
 	for i, msg := range buffered {
 		c.writeMu.Lock()
 		err := conn.WriteMessage(websocket.TextMessage, msg)
 		c.writeMu.Unlock()
 		if err != nil {
-			// - Возвращаем неотправленные сообщения обратно в буфер
+			// Не смогли отправить — возвращаем остаток обратно в буфер
 			for j := i; j < len(buffered); j++ {
 				c.buffer.Push(buffered[j])
 			}
@@ -134,12 +166,22 @@ func (c *Client) connect() error {
 		}
 	}
 
-	// - Останавливаем предыдущий heartbeat если был, и запускаем новый
+	// Heartbeat — пинг каждые 15с, чтобы соединение не убил прокси/NAT
 	c.heartbeatDone = make(chan struct{})
 	go c.heartbeat()
 
-	// - Цикл чтения команд от API
+	// Основной цикл чтения входящих команд от сервера
 	for {
+		select {
+		case <-c.done:
+			close(c.heartbeatDone)
+			c.mu.Lock()
+			c.connected = false
+			c.conn = nil
+			c.mu.Unlock()
+			return nil
+		default:
+		}
 		_, raw, err := conn.ReadMessage()
 		if err != nil {
 			break
@@ -152,9 +194,8 @@ func (c *Client) connect() error {
 			continue
 		}
 		if id, ok := msg["id"].(string); ok {
-			// - Проверяем rate limit перед выполнением команды
 			if !canExecuteCommand() {
-				log.Printf("// - Команда %s отклонена: превышен rate limit", id)
+				log.Printf("Команда %s отклонена: превышен rate limit", id)
 				c.SendResult(id, "error", "rate limit exceeded")
 				continue
 			}
@@ -166,7 +207,6 @@ func (c *Client) connect() error {
 		}
 	}
 
-	// - Останавливаем heartbeat перед выходом из connect
 	close(c.heartbeatDone)
 
 	c.mu.Lock()
@@ -176,6 +216,7 @@ func (c *Client) connect() error {
 	return nil
 }
 
+// heartbeat отправляет ping каждые 15 секунд, пока соединение живо
 func (c *Client) heartbeat() {
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
@@ -197,29 +238,14 @@ func (c *Client) heartbeat() {
 				return
 			}
 		case <-c.heartbeatDone:
-			// - Получен сигнал остановки, завершаем горутину
+			return
+		case <-c.done:
 			return
 		}
 	}
 }
 
-func (c *Client) reconnect() {
-	delay := time.Second
-	for {
-		log.Printf("// - Реконнект через %v...", delay)
-		time.Sleep(delay)
-		err := c.connect()
-		if err == nil {
-			return
-		}
-		log.Printf("// - Реконнект не удался: %v", err)
-		delay *= 2
-		if delay > 60*time.Second {
-			delay = 60 * time.Second
-		}
-	}
-}
-
+// Send отправляет сообщение на сервер. Если нет соединения — кладёт в кольцевой буфер.
 func (c *Client) Send(msg interface{}) error {
 	data, err := json.Marshal(msg)
 	if err != nil {
@@ -243,6 +269,7 @@ func (c *Client) Send(msg interface{}) error {
 	return err
 }
 
+// SendResult отправляет результат выполнения команды обратно на сервер
 func (c *Client) SendResult(id, status, errMsg string) {
 	result := map[string]string{
 		"type":   "command_result",
@@ -255,6 +282,7 @@ func (c *Client) SendResult(id, status, errMsg string) {
 	c.Send(result)
 }
 
+// SendDisconnect — корректное завершение: сбрасываем буфер и шлём disconnect
 func (c *Client) SendDisconnect() {
 	c.mu.Lock()
 	conn := c.conn
@@ -262,21 +290,36 @@ func (c *Client) SendDisconnect() {
 	if conn == nil {
 		return
 	}
-	// - Отправляем буферизованные сообщения перед отключением
+	// Перед отключением пытаемся отправить всё, что накопилось
 	buffered := c.buffer.DrainAll()
 	for _, msg := range buffered {
 		c.writeMu.Lock()
 		if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
 			c.writeMu.Unlock()
-			log.Printf("// - Ошибка отправки буферизованного сообщения при disconnect: %v", err)
+			log.Printf("Ошибка отправки буфера при disconnect: %v", err)
 			break
 		}
 		c.writeMu.Unlock()
 	}
 	c.writeMu.Lock()
 	if err := conn.WriteJSON(map[string]string{"type": "disconnect", "reason": "shutdown"}); err != nil {
-		log.Printf("// - Ошибка отправки disconnect: %v", err)
+		log.Printf("Ошибка отправки disconnect: %v", err)
 	}
 	c.writeMu.Unlock()
 	conn.Close()
+}
+
+// Close останавливает клиента и закрывает соединение. Безопасен для повторного вызова.
+func (c *Client) Close() {
+	c.closeOnce.Do(func() {
+		close(c.done)
+		c.mu.Lock()
+		conn := c.conn
+		c.connected = false
+		c.conn = nil
+		c.mu.Unlock()
+		if conn != nil {
+			_ = conn.Close()
+		}
+	})
 }

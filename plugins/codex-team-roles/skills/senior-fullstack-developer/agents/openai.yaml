@@ -1,7 +1,0 @@
-interface:
-  display_name: "Senior Fullstack Dev"
-  short_description: "Implements features and fixes carefully"
-  default_prompt: "Use $senior-fullstack-developer to implement this task with a safe, low-risk approach."
-
-policy:
-  allow_implicit_invocation: true

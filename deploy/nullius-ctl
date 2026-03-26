@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# - CLI для управления Nullius
+# CLI для управления Nullius
 INSTALL_DIR="/opt/nullius"
 VERSION="2.0.0"
 
 # ============================================================
-# - Вспомогательные функции
+# Вспомогательные функции
 # ============================================================
 
 require_root() {
@@ -47,14 +47,14 @@ fail_check() {
 }
 
 # ============================================================
-# - status: статус всех компонентов
+# status: статус всех компонентов
 # ============================================================
 
 cmd_status() {
     echo "=== Nullius Status ==="
     echo ""
 
-    # - Systemd сервисы
+    # Systemd сервисы
     echo "--- Сервисы ---"
     for svc in nullius-agent nullius-api nginx; do
         if systemctl is-active --quiet "$svc" 2>/dev/null; then
@@ -66,7 +66,7 @@ cmd_status() {
 
     echo ""
 
-    # - API health check
+    # API health check
     echo "--- API Health ---"
     if curl -sk --max-time 3 http://127.0.0.1:8000/api/health > /dev/null 2>&1; then
         HEALTH=$(curl -sk --max-time 3 http://127.0.0.1:8000/api/health 2>/dev/null)
@@ -77,20 +77,20 @@ cmd_status() {
 
     echo ""
 
-    # - Диск
+    # Диск
     echo "--- Хранилище ---"
     if [[ -d "$INSTALL_DIR" ]]; then
         DISK_USAGE=$(du -sh "$INSTALL_DIR" 2>/dev/null | awk '{print $1}')
         echo "  $INSTALL_DIR: $DISK_USAGE"
     fi
 
-    # - БД
+    # БД
     if [[ -f "$INSTALL_DIR/data/nullius.db" ]]; then
         DB_SIZE=$(du -sh "$INSTALL_DIR/data/nullius.db" 2>/dev/null | awk '{print $1}')
         echo "  БД: $DB_SIZE"
     fi
 
-    # - Логи
+    # Логи
     if [[ -d "$INSTALL_DIR/logs" ]]; then
         LOGS_SIZE=$(du -sh "$INSTALL_DIR/logs" 2>/dev/null | awk '{print $1}')
         echo "  Логи: $LOGS_SIZE"
@@ -98,7 +98,7 @@ cmd_status() {
 
     echo ""
 
-    # - TLS
+    # TLS
     echo "--- TLS ---"
     if [[ -f "$INSTALL_DIR/config/tls/cert.pem" ]]; then
         EXPIRY=$(openssl x509 -enddate -noout -in "$INSTALL_DIR/config/tls/cert.pem" 2>/dev/null | cut -d= -f2)
@@ -109,7 +109,7 @@ cmd_status() {
 }
 
 # ============================================================
-# - logs: просмотр логов
+# logs: просмотр логов
 # ============================================================
 
 cmd_logs() {
@@ -132,7 +132,7 @@ cmd_logs() {
 }
 
 # ============================================================
-# - config: редактирование конфига
+# config: редактирование конфига
 # ============================================================
 
 cmd_config() {
@@ -161,7 +161,7 @@ cmd_config() {
 }
 
 # ============================================================
-# - set-password: смена пароля дашборда
+# set-password: смена пароля дашборда
 # ============================================================
 
 cmd_set_password() {
@@ -193,7 +193,7 @@ cmd_set_password() {
 }
 
 # ============================================================
-# - smoke: быстрая end-to-end проверка MVP
+# smoke: быстрая end-to-end проверка MVP
 # ============================================================
 
 cmd_smoke() {
@@ -345,7 +345,7 @@ PY
 }
 
 # ============================================================
-# - tls: настройка Let's Encrypt
+# tls: настройка Let's Encrypt
 # ============================================================
 
 cmd_tls() {
@@ -365,13 +365,13 @@ cmd_tls() {
         exit 1
     fi
 
-    # - Валидация домена
+    # Валидация домена
     if [[ ! "$domain" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
         echo "ОШИБКА: Некорректный домен: $domain" >&2
         exit 1
     fi
 
-    # - Установка certbot если нет
+    # Установка certbot если нет
     if ! command -v certbot &>/dev/null; then
         echo "Установка certbot..."
         apt-get update -qq
@@ -381,7 +381,7 @@ cmd_tls() {
     echo "Получение сертификата для $domain..."
     certbot --nginx -d "$domain" --non-interactive --agree-tos --register-unsafely-without-email
 
-    # - Обновление nginx-конфига с реальным доменом
+    # Обновление nginx-конфига с реальным доменом
     sed -i "s/server_name _;/server_name $domain;/" /etc/nginx/sites-available/nullius
     nginx -t && systemctl reload nginx
 
@@ -390,7 +390,7 @@ cmd_tls() {
 }
 
 # ============================================================
-# - update: обновление (заглушка)
+# update: обновление (заглушка)
 # ============================================================
 
 cmd_update() {
@@ -409,7 +409,7 @@ cmd_update() {
 }
 
 # ============================================================
-# - reset-ml: сброс ML-моделей
+# reset-ml: сброс ML-моделей
 # ============================================================
 
 cmd_reset_ml() {
@@ -432,7 +432,7 @@ cmd_reset_ml() {
 }
 
 # ============================================================
-# - uninstall: полное удаление
+# uninstall: полное удаление
 # ============================================================
 
 cmd_uninstall() {
@@ -440,13 +440,13 @@ cmd_uninstall() {
 
     local uninstall_script="$INSTALL_DIR/../nullius-uninstall.sh"
 
-    # - Используем встроенный скрипт если есть, иначе копию из /opt
+    # Используем встроенный скрипт если есть, иначе копию из /opt
     if [[ -f "/opt/nullius/deploy/uninstall.sh" ]]; then
         bash "/opt/nullius/deploy/uninstall.sh"
     elif [[ -f "$(dirname "$0")/uninstall.sh" ]]; then
         bash "$(dirname "$0")/uninstall.sh"
     else
-        # - Встроенная логика удаления
+        # Встроенная логика удаления
         echo "=== Удаление Nullius ==="
         read -p "Удалить Nullius и все данные? [y/N] " confirm
         if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
@@ -470,7 +470,7 @@ cmd_uninstall() {
 }
 
 # ============================================================
-# - Роутинг команд
+# Роутинг команд
 # ============================================================
 
 COMMAND="${1:-}"

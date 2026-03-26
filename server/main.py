@@ -1,4 +1,4 @@
-# - Точка входа FastAPI-приложения Nullius
+# Точка входа FastAPI-приложения Nullius
 import asyncio
 import logging
 import os
@@ -18,7 +18,6 @@ from ws.frontend import frontend_ws_handler
 from security.detector import Detector
 from security.responder import Responder
 
-# - Размер токена в байтах для генерации секрета
 SECRET_TOKEN_BYTES = 32
 
 _writer_task = None
@@ -42,7 +41,6 @@ def create_app(
     """Создаёт и настраивает FastAPI-приложение."""
     config = load_config(config_path)
 
-    # - Инициализация security detector + responder
     detector = Detector(config.security)
     responder = Responder(auto_block=config.security.auto_block)
     init_security(detector, responder, config.security)
@@ -58,39 +56,38 @@ def create_app(
         health.set_db_status(True)
         _writer_task = await start_writer(db_path)
 
-        # - Инициализация ML-моделей (загрузка с диска или обучение classifier)
+        # Загрузка ML-моделей с диска или обучение classifier
         try:
             await init_models(db_path)
         except Exception:
-            logging.getLogger("nullius").warning("# - Ошибка инициализации ML-моделей", exc_info=True)
+            logging.getLogger("nullius").warning("Ошибка инициализации ML-моделей", exc_info=True)
 
-        # - Фоновая задача: проверка истёкших блокировок IP каждые 60 сек
+        # Проверка истёкших блокировок IP каждые 60 сек
         async def _expiry_loop():
             while True:
                 try:
                     await expire_blocked_ips(db_path)
                 except Exception:
-                    logging.getLogger("nullius").warning("# - Ошибка в expiry loop", exc_info=True)
+                    logging.getLogger("nullius").warning("Ошибка в expiry loop", exc_info=True)
                 await asyncio.sleep(60)
 
-        # - Фоновая задача: очистка старых данных каждый час
+        # Очистка старых данных каждый час
         async def _retention_loop():
             while True:
                 await asyncio.sleep(3600)
                 try:
                     await cleanup_old_data(db_path)
                 except Exception:
-                    logging.getLogger("nullius").warning("# - Ошибка в retention loop", exc_info=True)
+                    logging.getLogger("nullius").warning("Ошибка в retention loop", exc_info=True)
 
-        # - Фоновая задача: обучение anomaly detector (первичное через 24ч, потом каждые 7 дней)
+        # Обучение anomaly detector: первый запуск через час, потом каждые 6 часов
         async def _ml_training_loop():
-            # - Первая проверка через 1 час, потом каждые 6 часов
             await asyncio.sleep(3600)
             while True:
                 try:
                     await train_anomaly_from_db(db_path, hours=24)
                 except Exception:
-                    logging.getLogger("nullius").warning("# - Ошибка в ML training loop", exc_info=True)
+                    logging.getLogger("nullius").warning("Ошибка в ML training loop", exc_info=True)
                 await asyncio.sleep(6 * 3600)
 
         _bg_tasks = [
@@ -101,43 +98,50 @@ def create_app(
         yield
         for task in _bg_tasks:
             task.cancel()
-        # - Ждём завершения отменённых задач перед остановкой writer
+        # Дожидаемся завершения отменённых задач перед остановкой writer
         await asyncio.gather(*_bg_tasks, return_exceptions=True)
         if _writer_task:
             await stop_writer(_writer_task)
 
-    # - Секрет для аутентификации агента: приоритет env > файл > дефолт для разработки
+    # Секрет агента: приоритет env > файл agent.key > генерация временного
     agent_secret = os.environ.get("NULLIUS_AGENT_SECRET", "")
     if not agent_secret:
-        # - Для install.sh key лежит рядом с nullius.yaml: /opt/nullius/config/{nullius.yaml,agent.key}
+        # install.sh кладёт ключ рядом с конфигом: /opt/nullius/config/agent.key
         key_path = Path(config_path).with_name("agent.key")
         if key_path.exists():
             agent_secret = key_path.read_text().strip()
     if not agent_secret:
-        # - В продакшне секрет обязателен, в dev генерируем временный
         agent_secret = secrets.token_hex(SECRET_TOKEN_BYTES)
         logging.getLogger("nullius").warning(
-            "# - NULLIUS_AGENT_SECRET не задан, сгенерирован временный. "
+            "NULLIUS_AGENT_SECRET не задан, сгенерирован временный. "
             "Задайте через env или config/agent.key для продакшна!"
         )
 
-    # - Bearer auth для UI/API включается только если это явно разрешено конфигом
-    set_api_token(agent_secret if config.api.require_bearer_auth else "")
+    # Bearer auth для REST API — отдельный токен, не агентский секрет
+    api_token = ""
+    if config.api.require_bearer_auth:
+        api_token = os.environ.get("NULLIUS_API_TOKEN", "").strip() or config.api.token.strip()
+        if not api_token:
+            api_token = agent_secret
+            logging.getLogger("nullius").warning(
+                "API Bearer auth использует agent secret как fallback. "
+                "Задайте api.token или NULLIUS_API_TOKEN, чтобы развести контуры доступа."
+            )
+    set_api_token(api_token)
 
     app = FastAPI(title="Nullius API", lifespan=lifespan)
 
-    # - CORS: ограничиваем источники запросов
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:3000"],
+        allow_origins=config.api.cors_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "DELETE"],
-        allow_headers=["Authorization"],
+        allow_headers=["Authorization", "Content-Type"],
     )
 
     app.state.config = config
     app.state.db_path = db_path
-    # - Health эндпоинт публичный, остальные защищены Bearer-токеном
+    # Health — публичный, остальные роутеры защищены Bearer-токеном
     app.include_router(health.router)
     app.include_router(metrics.router, dependencies=[Depends(require_auth)])
     app.include_router(services.router, dependencies=[Depends(require_auth)])

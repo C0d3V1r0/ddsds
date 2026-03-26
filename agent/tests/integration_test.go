@@ -9,6 +9,8 @@ import (
 	"github.com/nullius/agent/ws"
 )
 
+// Интеграционный тест: проверяет, что агент может подключиться к живому серверу.
+// Запускать только с тегом: go test -tags=integration
 func TestAgentConnectsToBackend(t *testing.T) {
 	client := ws.NewClient(
 		"ws://127.0.0.1:8000/ws/agent",
@@ -20,7 +22,6 @@ func TestAgentConnectsToBackend(t *testing.T) {
 		client.Run()
 	}()
 
-	// - Отправляем ping после короткой задержки
 	time.Sleep(2 * time.Second)
 	err := client.Send(map[string]string{"type": "ping"})
 	if err != nil {

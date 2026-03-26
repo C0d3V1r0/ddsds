@@ -1,4 +1,4 @@
-# - Детектор угроз: анализирует записи логов и выявляет атаки
+# Детектор угроз: анализирует записи логов и выявляет атаки
 import time
 from collections import defaultdict
 
@@ -12,7 +12,7 @@ class Detector:
         self._ssh_attempts: dict[str, list[int]] = defaultdict(list)
 
     def check_log(self, log_entry: dict) -> dict | None:
-        """- Главная точка входа: маршрутизирует лог по источнику"""
+        """Главная точка входа: маршрутизирует лог по источнику"""
         source = log_entry.get("source", "")
         line = log_entry.get("line", "")
 
@@ -24,7 +24,7 @@ class Detector:
         return None
 
     def _check_ssh(self, line: str) -> dict | None:
-        """- Обнаружение brute-force по SSH: считаем попытки в скользящем окне"""
+        """Обнаружение brute-force по SSH: считаем попытки в скользящем окне"""
         match = SSH_FAILED_PATTERN.search(line)
         if not match:
             return None
@@ -35,15 +35,14 @@ class Detector:
         threshold = self.config.ssh_brute_force.threshold
 
         self._ssh_attempts[ip].append(now)
-        # - Оставляем только попытки внутри временного окна
+        # Оставляем только попытки внутри временного окна
         self._ssh_attempts[ip] = [t for t in self._ssh_attempts[ip] if now - t <= window]
 
-        # - Ленивая очистка: удаляем устаревшие записи для предотвращения утечки памяти
+        # Ленивая очистка: удаляем устаревшие записи для предотвращения утечки памяти
         stale_ips = []
         for other_ip, timestamps in self._ssh_attempts.items():
             if other_ip == ip:
                 continue
-            # - Фильтруем устаревшие записи у других IP
             fresh = [t for t in timestamps if now - t <= window]
             if not fresh:
                 stale_ips.append(other_ip)
@@ -53,7 +52,7 @@ class Detector:
             del self._ssh_attempts[stale_ip]
 
         if len(self._ssh_attempts[ip]) >= threshold:
-            # - Сбрасываем счетчик после срабатывания, чтобы не дублировать алерты
+            # Сбрасываем счётчик после срабатывания, чтобы не дублировать алерты
             self._ssh_attempts[ip] = []
             return {
                 "type": "ssh_brute_force",
@@ -66,7 +65,7 @@ class Detector:
         return None
 
     def _check_web(self, line: str) -> dict | None:
-        """- Обнаружение веб-атак: SQLi, XSS, path traversal"""
+        """Обнаружение веб-атак: SQLi, XSS, path traversal"""
         if not self.config.web_attacks.enabled:
             return None
 

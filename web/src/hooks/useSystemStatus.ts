@@ -1,9 +1,9 @@
+// Периодический опрос health API и синхронизация статуса агента в стор
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import { api } from '../lib/api';
 import { useStore } from '../stores/store';
-
 
 export function useSystemStatus() {
   const setAgentStatus = useStore((state) => state.setAgentStatus);

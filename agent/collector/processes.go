@@ -1,14 +1,17 @@
 package collector
 
 import (
+	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 )
 
-// - Информация о процессе: PID, имя, CPU, RAM
+// ProcessInfo — информация о процессе для отправки на сервер
 type ProcessInfo struct {
 	PID  int     `json:"pid"`
 	Name string  `json:"name"`
@@ -16,7 +19,14 @@ type ProcessInfo struct {
 	RAM  uint64  `json:"ram"`
 }
 
-// - Сбор списка процессов из /proc
+// CLK_TCK вызываем через getconf один раз за весь runtime — это syscall, незачем дёргать каждый тик
+var (
+	clockTicksOnce sync.Once
+	clockTicks     float64 = 100
+)
+
+// CollectProcesses обходит /proc и собирает список процессов с CPU% и RSS.
+// Процессы, которые не удалось прочитать (уже завершились, нет прав), тихо пропускаются.
 func CollectProcesses() ([]ProcessInfo, error) {
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
@@ -40,7 +50,9 @@ func CollectProcesses() ([]ProcessInfo, error) {
 	return procs, nil
 }
 
-// - Чтение информации о процессе из /proc/<pid>/stat
+// readProcessInfo парсит /proc/<pid>/stat для извлечения имени, CPU% и RSS.
+// Имя процесса в stat заключено в скобки: "1 (systemd) S 0 1 1 ..."
+// CPU% считаем как (utime+stime)/elapsed — среднее за всё время жизни процесса.
 func readProcessInfo(pid int) (*ProcessInfo, error) {
 	statPath := filepath.Join("/proc", strconv.Itoa(pid), "stat")
 	data, err := os.ReadFile(statPath)
@@ -48,7 +60,8 @@ func readProcessInfo(pid int) (*ProcessInfo, error) {
 		return nil, err
 	}
 	s := string(data)
-	// - Имя процесса заключено в скобки: (name)
+
+	// Парсим имя — оно в скобках, может содержать пробелы и другие скобки
 	start := strings.IndexByte(s, '(')
 	end := strings.LastIndexByte(s, ')')
 	if start < 0 || end < 0 {
@@ -56,12 +69,62 @@ func readProcessInfo(pid int) (*ProcessInfo, error) {
 	}
 	name := s[start+1 : end]
 	fields := strings.Fields(s[end+2:])
+
 	var rss uint64
-	// - RSS находится на позиции 23 в /proc/pid/stat (индекс 21 после имени)
+	var cpu float64
+
+	// RSS — поле 23 в /proc/pid/stat (индекс 21 относительно полей после имени)
 	if len(fields) > 21 {
 		rss, _ = strconv.ParseUint(fields[21], 10, 64)
-		// - RSS в страницах, умножаем на реальный размер страницы ОС
-		rss *= uint64(os.Getpagesize())
+		rss *= uint64(os.Getpagesize()) // из страниц в байты
 	}
-	return &ProcessInfo{PID: pid, Name: name, RAM: rss}, nil
+
+	// CPU% = (utime + stime) / elapsed_seconds / CLK_TCK * 100
+	if len(fields) > 19 {
+		utime, _ := strconv.ParseUint(fields[11], 10, 64)
+		stime, _ := strconv.ParseUint(fields[12], 10, 64)
+		startTime, _ := strconv.ParseUint(fields[19], 10, 64)
+
+		uptimeSeconds, err := readUptimeSeconds()
+		if err == nil {
+			ticks := getClockTicks()
+			elapsed := uptimeSeconds - (float64(startTime) / ticks)
+			if elapsed > 0 {
+				cpu = ((float64(utime+stime) / ticks) / elapsed) * 100.0
+			}
+		}
+	}
+	return &ProcessInfo{PID: pid, Name: name, CPU: cpu, RAM: rss}, nil
+}
+
+func readUptimeSeconds() (float64, error) {
+	f, err := os.Open("/proc/uptime")
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	if !scanner.Scan() {
+		return 0, fmt.Errorf("failed to read /proc/uptime")
+	}
+	fields := strings.Fields(scanner.Text())
+	if len(fields) == 0 {
+		return 0, fmt.Errorf("invalid /proc/uptime format")
+	}
+	return strconv.ParseFloat(fields[0], 64)
+}
+
+func getClockTicks() float64 {
+	clockTicksOnce.Do(func() {
+		out, err := exec.Command("getconf", "CLK_TCK").Output()
+		if err != nil {
+			return
+		}
+		value, parseErr := strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
+		if parseErr == nil && value > 0 {
+			clockTicks = value
+		}
+	})
+	return clockTicks
 }

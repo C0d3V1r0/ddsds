@@ -1,17 +1,9 @@
-# - Детектор аномалий на базе Isolation Forest
-import hashlib
+# Детектор аномалий на базе Isolation Forest
 import joblib
 import numpy as np
 from sklearn.ensemble import IsolationForest
 
-
-def _compute_hash(path: str) -> str:
-    """- Вычисляет SHA-256 хеш файла модели для верификации целостности"""
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(8192), b""):
-            h.update(chunk)
-    return h.hexdigest()
+from ml.utils import _compute_hash
 
 
 class AnomalyDetector:
@@ -25,7 +17,7 @@ class AnomalyDetector:
         return self._ready
 
     def train(self, data: list[list[float]]) -> None:
-        """- Обучает модель на нормальных данных метрик"""
+        """Обучает модель на нормальных данных метрик"""
         X = np.array(data)
         self._model = IsolationForest(
             contamination=self._contamination,
@@ -36,7 +28,7 @@ class AnomalyDetector:
         self._ready = True
 
     def predict(self, features: list[float]) -> dict:
-        """- Возвращает предсказание: является ли набор метрик аномалией"""
+        """Возвращает предсказание: является ли набор метрик аномалией"""
         if not self._ready or self._model is None:
             return {"is_anomaly": False, "score": 0.0}
 
@@ -50,18 +42,18 @@ class AnomalyDetector:
         }
 
     def save(self, path: str) -> None:
-        """- Сохраняет обученную модель на диск"""
+        """Сохраняет обученную модель на диск"""
         if self._model is None:
-            raise RuntimeError("# - Модель не обучена, сохранение невозможно")
+            raise RuntimeError("Модель не обучена, сохранение невозможно")
         joblib.dump(self._model, path)
         self._file_hash = _compute_hash(path)
 
     def load(self, path: str) -> None:
-        """- Загружает модель с диска с верификацией хеша"""
+        """Загружает модель с диска с верификацией хеша"""
         self._model = joblib.load(path)
         self._ready = True
         self._file_hash = _compute_hash(path)
 
     def get_file_hash(self) -> str:
-        """- Возвращает SHA-256 хеш файла модели"""
+        """Возвращает SHA-256 хеш файла модели"""
         return self._file_hash

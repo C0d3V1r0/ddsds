@@ -73,7 +73,30 @@ async def test_block_ip_invalid_format(test_app):
             "ip": "not-an-ip",
             "reason": "test"
         })
-    assert resp.status_code == 400
+    assert resp.status_code == 422
+
+@pytest.mark.asyncio
+async def test_block_ip_rejects_invalid_duration(test_app):
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/api/security/block", json={
+            "ip": "10.0.0.5",
+            "reason": "manual block",
+            "duration": -1
+        })
+    assert resp.status_code == 422
+
+@pytest.mark.asyncio
+async def test_block_ip_strips_ip_and_reason(test_app):
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/api/security/block", json={
+            "ip": " 10.0.0.8 ",
+            "reason": "  manual block  ",
+            "duration": 3600
+        })
+    assert resp.status_code == 200
+    assert resp.json()["ip"] == "10.0.0.8"
 
 @pytest.mark.asyncio
 async def test_unblock_ip(test_app):
@@ -90,3 +113,10 @@ async def test_unblock_ip(test_app):
         resp = await client.post("/api/security/unblock", json={"ip": "10.0.0.6"})
     assert resp.status_code == 200
     assert resp.json()["status"] == "unblocked"
+
+@pytest.mark.asyncio
+async def test_unblock_ip_invalid_format(test_app):
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/api/security/unblock", json={"ip": "bad ip"})
+    assert resp.status_code == 422

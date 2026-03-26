@@ -12,7 +12,7 @@ kill_matching_processes() {
     pkill -9 -f "$pattern" 2>/dev/null || true
 }
 
-# - Полное удаление Nullius
+# Полное удаление Nullius
 echo "=== Удаление Nullius ==="
 
 read -p "Удалить Nullius и все данные? [y/N] " confirm

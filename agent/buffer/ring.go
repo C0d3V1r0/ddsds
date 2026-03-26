@@ -2,7 +2,9 @@ package buffer
 
 import "sync"
 
-// - потокобезопасный кольцевой буфер для накопления данных перед отправкой
+// RingBuffer — потокобезопасный кольцевой буфер для сообщений.
+// Используется WS-клиентом: если сервер недоступен, сообщения копятся здесь
+// и отправляются при восстановлении соединения. При переполнении затирает самые старые.
 type RingBuffer struct {
 	mu    sync.Mutex
 	items [][]byte
@@ -11,7 +13,7 @@ type RingBuffer struct {
 	cap   int
 }
 
-// - создаёт кольцевой буфер заданной ёмкости; паникует при некорректном capacity
+// New создаёт буфер заданной ёмкости. Паникует если capacity <= 0 — это баг вызывающего кода.
 func New(capacity int) *RingBuffer {
 	if capacity <= 0 {
 		panic("buffer capacity must be > 0")
@@ -22,14 +24,13 @@ func New(capacity int) *RingBuffer {
 	}
 }
 
-// - добавляет элемент в буфер, при переполнении затирает самый старый
+// Push добавляет элемент. Если буфер полон — перезаписывает самый старый (FIFO с вытеснением).
 func (rb *RingBuffer) Push(data []byte) {
 	rb.mu.Lock()
 	defer rb.mu.Unlock()
 
 	idx := (rb.head + rb.count) % rb.cap
 	if rb.count == rb.cap {
-		// - буфер полон — сдвигаем голову, теряем самый старый элемент
 		rb.head = (rb.head + 1) % rb.cap
 	} else {
 		rb.count++
@@ -37,7 +38,8 @@ func (rb *RingBuffer) Push(data []byte) {
 	rb.items[idx] = data
 }
 
-// - извлекает все элементы из буфера и очищает его
+// DrainAll извлекает все элементы в порядке добавления и очищает буфер.
+// Вызывается при восстановлении WS-соединения.
 func (rb *RingBuffer) DrainAll() [][]byte {
 	rb.mu.Lock()
 	defer rb.mu.Unlock()

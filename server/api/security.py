@@ -1,26 +1,48 @@
-# - REST API для событий безопасности и управления блокировкой IP
+# REST API для событий безопасности и управления блокировкой IP
 import ipaddress
 import time
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Query
+from pydantic import BaseModel, Field, field_validator
 from db import get_db, enqueue_write
 
 router = APIRouter()
+MAX_BLOCK_DURATION = 30 * 86400
 
 
 class BlockRequest(BaseModel):
     ip: str
     reason: str = Field(default="", max_length=500)
-    duration: Optional[int] = None
+    duration: Optional[int] = Field(default=None, ge=60, le=MAX_BLOCK_DURATION)
+
+    @field_validator("ip")
+    @classmethod
+    def validate_ip(cls, value: str) -> str:
+        ip = value.strip()
+        if not _validate_ip(ip):
+            raise ValueError("Invalid IP address format")
+        return ip
+
+    @field_validator("reason")
+    @classmethod
+    def normalize_reason(cls, value: str) -> str:
+        return value.strip()
 
 
 class UnblockRequest(BaseModel):
     ip: str
 
+    @field_validator("ip")
+    @classmethod
+    def validate_ip(cls, value: str) -> str:
+        ip = value.strip()
+        if not _validate_ip(ip):
+            raise ValueError("Invalid IP address format")
+        return ip
+
 
 def _validate_ip(ip: str) -> bool:
-    # - Проверяем формат IPv4/IPv6 через стандартную библиотеку
+    """Проверяет формат IPv4/IPv6 через стандартную библиотеку."""
     try:
         ipaddress.ip_address(ip)
         return True
@@ -68,11 +90,9 @@ async def get_blocked_ips() -> list[dict[str, object]]:
 
 @router.post("/api/security/block")
 async def block_ip(req: BlockRequest) -> dict[str, str]:
-    if not _validate_ip(req.ip):
-        raise HTTPException(status_code=400, detail="Invalid IP address format")
     now = int(time.time())
     expires = now + req.duration if req.duration else None
-    # - Запись через очередь, чтобы не блокировать БД конкурентными записями
+    # Запись через очередь — не блокируем БД конкурентными записями
     await enqueue_write(
         "INSERT OR REPLACE INTO blocked_ips (ip, reason, blocked_at, expires_at, auto) "
         "VALUES (?, ?, ?, ?, 0)",
@@ -83,8 +103,5 @@ async def block_ip(req: BlockRequest) -> dict[str, str]:
 
 @router.post("/api/security/unblock")
 async def unblock_ip(req: UnblockRequest) -> dict[str, str]:
-    if not _validate_ip(req.ip):
-        raise HTTPException(status_code=400, detail="Invalid IP address format")
-    # - Удаление через очередь записи
     await enqueue_write("DELETE FROM blocked_ips WHERE ip = ?", (req.ip,))
     return {"status": "unblocked", "ip": req.ip}

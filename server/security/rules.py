@@ -1,12 +1,12 @@
-# - Паттерны для обнаружения атак в логах
+# Паттерны для обнаружения атак в логах
 import re
 
-# - SSH: извлекаем IP из записи о неудачной аутентификации
+# SSH: извлекаем IP из записи о неудачной аутентификации
 SSH_FAILED_PATTERN = re.compile(
     r"Failed password.*from\s+(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"
 )
 
-# - Веб-атаки: SQL-инъекции, XSS, обход путей
+# Веб-атаки: SQL-инъекции, XSS, обход путей
 WEB_ATTACK_PATTERNS = {
     "sqli": re.compile(
         r"(?i)(\b(union\s+select|or\s+1\s*=\s*1|and\s+1\s*=\s*1|"
@@ -22,5 +22,5 @@ WEB_ATTACK_PATTERNS = {
     ),
 }
 
-# - Извлечение IP из начала строки лога nginx/apache
+# Извлечение IP из начала строки лога nginx/apache
 NGINX_LOG_IP_PATTERN = re.compile(r"^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})")

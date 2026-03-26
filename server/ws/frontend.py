@@ -1,4 +1,4 @@
-# - WebSocket-обработчик фронтенда: подключение клиентов и broadcast событий
+# WebSocket-обработчик фронтенда: подключение клиентов и broadcast событий
 import asyncio
 import hmac
 import logging
@@ -7,18 +7,18 @@ from fastapi import WebSocket, WebSocketDisconnect
 _logger = logging.getLogger("nullius.ws.frontend")
 _clients: set[WebSocket] = set()
 
-# - Максимальное количество одновременных WS-подключений фронтенда
+# Максимальное количество одновременных WS-подключений фронтенда
 MAX_WS_CLIENTS = 100
 
 
 async def frontend_ws_handler(ws: WebSocket, api_token: str) -> None:
-    # - Ограничение количества подключений для защиты от исчерпания ресурсов
+    # Ограничение количества подключений для защиты от исчерпания ресурсов
     if len(_clients) >= MAX_WS_CLIENTS:
         await ws.close(code=1008)
         return
     await ws.accept()
 
-    # - Проверка токена нужна только если она явно включена конфигом
+    # Проверка токена нужна только если она явно включена конфигом
     if api_token:
         try:
             first_msg = await asyncio.wait_for(ws.receive_json(), timeout=5.0)
@@ -41,7 +41,8 @@ async def frontend_ws_handler(ws: WebSocket, api_token: str) -> None:
 
 
 async def broadcast(event: dict) -> None:
-    # - Рассылаем событие всем подключённым фронтенд-клиентам, итерируемся по копии
+    # Рассылаем событие всем подключённым фронтенд-клиентам, итерируемся по копии
+    global _clients
     disconnected: set[WebSocket] = set()
     for ws in list(_clients):
         try:
@@ -49,6 +50,6 @@ async def broadcast(event: dict) -> None:
         except WebSocketDisconnect:
             disconnected.add(ws)
         except Exception:
-            _logger.warning(f"# - Ошибка broadcast клиенту: {ws}", exc_info=True)
+            _logger.warning(f"Ошибка broadcast клиенту: {ws}", exc_info=True)
             disconnected.add(ws)
     _clients -= disconnected

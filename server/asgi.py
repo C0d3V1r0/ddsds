@@ -1,3 +1,4 @@
+# ASGI-точка входа для запуска через uvicorn (uvicorn asgi:app)
 from main import create_app, get_config_path, get_db_path
 
 

@@ -27,26 +27,27 @@ func main() {
 		secretPath = os.Args[2]
 	}
 
-	// - Валидация путей конфигурации: нормализуем для защиты от path traversal
+	// Нормализуем пути — защита от path traversal через аргументы
 	configPath = filepath.Clean(configPath)
 	secretPath = filepath.Clean(secretPath)
 
 	cfg, err := config.Load(configPath)
 	if err != nil {
-		log.Fatalf("// - Ошибка загрузки конфига: %v", err)
+		log.Fatalf("Ошибка загрузки конфига: %v", err)
 	}
 
 	secret, err := os.ReadFile(secretPath)
 	if err != nil {
-		log.Fatalf("// - Не удалось прочитать agent.key: %v", err)
+		log.Fatalf("Не удалось прочитать agent.key: %v", err)
 	}
 
-	// - Контекст для управления жизненным циклом горутин
+	// Корневой контекст — при отмене все горутины сборщиков остановятся
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	exec := executor.New(cfg.Security.AllowedServices)
 
+	// Обработчик входящих команд от API-сервера (block_ip, kill_process и т.д.)
 	var client *ws.Client
 	client = ws.NewClient(
 		cfg.Agent.ServerURL,
@@ -64,74 +65,99 @@ func main() {
 
 	go client.Run()
 
-	// - Сбор метрик с заданным интервалом
+	// Горутина сбора системных метрик (CPU, RAM, диск, сеть, load average)
 	go func() {
+		ticker := time.NewTicker(time.Duration(cfg.Agent.MetricsInterval) * time.Second)
+		defer ticker.Stop()
 		for {
-			metrics, err := collector.CollectMetrics()
-			if err != nil {
-				log.Printf("// - Ошибка сбора метрик: %v", err)
-			} else {
-				client.Send(map[string]interface{}{
-					"type":      "metrics",
-					"timestamp": time.Now().Unix(),
-					"data":      metrics,
-				})
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				metrics, err := collector.CollectMetrics()
+				if err != nil {
+					log.Printf("Ошибка сбора метрик: %v", err)
+				} else {
+					client.Send(map[string]interface{}{
+						"type":      "metrics",
+						"timestamp": time.Now().Unix(),
+						"data":      metrics,
+					})
+				}
 			}
-			time.Sleep(time.Duration(cfg.Agent.MetricsInterval) * time.Second)
 		}
 	}()
 
-	// - Сбор статусов сервисов
+	// Горутина опроса systemd-сервисов (nginx, postgres, docker и т.д.)
 	go func() {
+		ticker := time.NewTicker(time.Duration(cfg.Agent.ServicesInterval) * time.Second)
+		defer ticker.Stop()
 		for {
-			services, err := collector.CollectServices()
-			if err != nil {
-				log.Printf("// - Ошибка сбора сервисов: %v", err)
-			} else {
-				client.Send(map[string]interface{}{
-					"type": "services",
-					"data": services,
-				})
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				services, err := collector.CollectServices()
+				if err != nil {
+					log.Printf("Ошибка сбора сервисов: %v", err)
+				} else {
+					client.Send(map[string]interface{}{
+						"type": "services",
+						"data": services,
+					})
+				}
 			}
-			time.Sleep(time.Duration(cfg.Agent.ServicesInterval) * time.Second)
 		}
 	}()
 
-	// - Tail логов
+	// Запускаем tail логов — каждый файл отслеживается отдельной горутиной
 	tailer := collector.NewLogTailer(cfg.Agent.LogSources)
 	tailer.Start()
 	go func() {
 		for entry := range tailer.Entries() {
-			client.Send(map[string]interface{}{
-				"type":      "log_event",
-				"timestamp": time.Now().Unix(),
-				"data":      entry,
-			})
-		}
-	}()
-
-	// - Сбор процессов с настраиваемым интервалом из конфига
-	go func() {
-		for {
-			procs, err := collector.CollectProcesses()
-			if err != nil {
-				log.Printf("// - Ошибка сбора процессов: %v", err)
-			} else {
+			select {
+			case <-ctx.Done():
+				return
+			default:
 				client.Send(map[string]interface{}{
-					"type": "processes",
-					"data": procs,
+					"type":      "log_event",
+					"timestamp": time.Now().Unix(),
+					"data":      entry,
 				})
 			}
-			time.Sleep(time.Duration(cfg.Agent.ProcessesInterval) * time.Second)
 		}
 	}()
 
-	// - Graceful shutdown по SIGTERM/SIGINT
+	// Горутина сбора списка процессов из /proc
+	go func() {
+		ticker := time.NewTicker(time.Duration(cfg.Agent.ProcessesInterval) * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				procs, err := collector.CollectProcesses()
+				if err != nil {
+					log.Printf("Ошибка сбора процессов: %v", err)
+				} else {
+					client.Send(map[string]interface{}{
+						"type": "processes",
+						"data": procs,
+					})
+				}
+			}
+		}
+	}()
+
+	// Ждём SIGTERM/SIGINT и корректно останавливаемся
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
 	<-sig
-	log.Println("// - Остановка агента...")
+	log.Println("Остановка агента...")
 	cancel()
+	tailer.Stop()
 	client.SendDisconnect()
+	client.Close()
 	fmt.Println("Nullius Agent stopped")
 }

@@ -14,7 +14,7 @@ StandardError=append:/opt/nullius/logs/agent.log
 MemoryMax=128M
 CPUQuota=10%
 
-# - Hardening
+# Hardening
 NoNewPrivileges=yes
 ProtectSystem=strict
 ReadWritePaths=/opt/nullius/logs

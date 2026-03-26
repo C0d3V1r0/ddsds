@@ -3,7 +3,7 @@ import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 from pathlib import Path
 
-# - Добавляем server/ в sys.path для корректного импорта модулей
+# Добавляем server/ в sys.path для корректного импорта модулей
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -67,6 +67,7 @@ ml:
 api:
   require_bearer_auth: true
   require_ws_token: true
+  token: test-api-token-for-tests
 """
     p = tmp_path / "secure-nullius.yaml"
     p.write_text(config)
@@ -74,6 +75,7 @@ api:
 
 
 TEST_AGENT_SECRET = "test-secret-for-tests"
+TEST_API_TOKEN = "test-api-token-for-tests"
 
 
 @pytest_asyncio.fixture
@@ -81,16 +83,16 @@ async def test_app(tmp_path, test_config_path, monkeypatch):
     from main import create_app
     from db import init_db
     from api.auth import set_api_token
-    # - Задаём секрет агента через env для предсказуемости тестов
+    # Задаём секрет агента через env для предсказуемости тестов
     monkeypatch.setenv("NULLIUS_AGENT_SECRET", TEST_AGENT_SECRET)
     db_path = str(tmp_path / "test.db")
-    # - Явно инициализируем БД, т.к. lifespan не запускается в тестовом транспорте
+    # Явно инициализируем БД, т.к. lifespan не запускается в тестовом транспорте
     await init_db(db_path)
     app = create_app(
         config_path=test_config_path,
         db_path=db_path
     )
-    # - Отключаем API-аутентификацию для тестов (пустой токен пропускает проверку)
+    # Отключаем API-аутентификацию для тестов (пустой токен пропускает проверку)
     set_api_token("")
     yield app
 

@@ -1,14 +1,17 @@
-// - Локализация интерфейса (русский язык)
+// Локализация интерфейса (русский язык)
 
 export const t = {
-  // - Общие
+  // Общие
   common: {
     loading: 'Загрузка...',
+    loadingHint: 'Обычно это занимает несколько секунд после открытия страницы.',
     error: 'Ошибка загрузки данных',
+    errorHint: 'Проверь статус API и агента, затем обнови страницу.',
     retry: 'Повторить',
+    noDataHint: 'Данные появятся автоматически, когда агент отправит следующий снимок.',
   },
 
-  // - Навигация
+  // Навигация
   nav: {
     dashboard: 'Обзор',
     security: 'Безопасность',
@@ -17,8 +20,10 @@ export const t = {
     settings: 'Настройки',
   },
 
-  // - Dashboard
+  // Dashboard
   dashboard: {
+    title: 'Обзор системы',
+    summary: 'Ключевые метрики, состояние сервисов и последние события безопасности.',
     cpu: 'Процессор',
     ram: 'Память',
     disk: 'Диск',
@@ -29,11 +34,16 @@ export const t = {
     recentEvents: 'Последние события',
     noServices: 'Нет сервисов',
     noEvents: 'Нет событий',
+    systemState: 'Состояние системы',
+    systemHealthy: 'Система работает штатно',
+    systemAttention: 'Требуется внимание',
+    systemStateHint: 'Проверь статус агента, live-канала и наличие свежих данных.',
   },
 
-  // - Security
+  // Безопасность
   security: {
     title: 'Безопасность',
+    summary: 'События безопасности, ручные блокировки и список уже заблокированных адресов.',
     allTypes: 'Все типы',
     events: 'События безопасности',
     blockIp: 'Блокировка IP',
@@ -53,11 +63,15 @@ export const t = {
     expires: 'Истекает',
     auto: 'Авто',
     never: 'Никогда',
+    invalidIp: 'Укажи корректный IPv4 или IPv6 адрес.',
+    blockHint: 'Ручная блокировка полезна, когда нужно быстро перекрыть доступ до автодетекта.',
+    mutationError: 'Операция не выполнилась. Проверь IP и повтори попытку.',
   },
 
-  // - Processes
+  // Процессы
   processes: {
     title: 'Процессы',
+    summary: 'Текущий снимок активных процессов с сортировкой по CPU, RAM и PID.',
     searchPlaceholder: 'Поиск по имени или PID...',
     processCount: (n: number) => `${n} процессов`,
     noProcesses: 'Нет процессов',
@@ -67,7 +81,7 @@ export const t = {
     ramMb: 'RAM (МБ)',
   },
 
-  // - Logs
+  // Логи
   logs: {
     title: 'Логи',
     allSources: 'Все источники',
@@ -77,9 +91,10 @@ export const t = {
     noLogs: 'Нет логов',
   },
 
-  // - Settings
+  // Настройки
   settings: {
     title: 'Настройки',
+    summary: 'Сводка по состоянию платформы, внешнему виду и ML-модулю.',
     systemStatus: 'Статус системы',
     apiServer: 'API Сервер',
     agent: 'Агент',
@@ -95,25 +110,29 @@ export const t = {
     about: 'О системе',
     version: 'Nullius v2.0.0-dev',
     subtitle: 'Иммунная система сервера',
+    systemStatusHint: 'Если какой-то компонент не работает, сначала проверь его systemd-статус и health API.',
+    appearanceHint: 'Переключение темы сохраняется локально в интерфейсе.',
   },
 
-  // - Header
+  // Header
   header: {
+    statusLabel: 'Статус контура',
     agentConnected: 'Агент подключён',
     agentDisconnected: 'Агент отключён',
     liveConnected: 'Live-канал подключён',
     liveDisconnected: 'Live-канал отключён',
   },
 
-  // - Badge/Status
+  // Статусы
   status: {
     running: 'работает',
     stopped: 'остановлен',
     failed: 'ошибка',
   },
 
-  // - Table
+  // Таблица
   table: {
     noData: 'Нет данных',
+    noDataHint: 'Попробуй обновить страницу или подожди следующий цикл сбора.',
   },
 } as const;

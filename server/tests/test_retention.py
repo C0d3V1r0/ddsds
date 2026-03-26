@@ -1,4 +1,4 @@
-# - Тесты retention: очистка устаревших метрик, событий, команд
+# Тесты retention: очистка устаревших метрик, событий, команд
 import pytest
 import time
 from db import init_db, get_db

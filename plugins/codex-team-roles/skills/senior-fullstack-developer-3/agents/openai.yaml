@@ -1,7 +1,0 @@
-interface:
-  display_name: "Fullstack Dev 3"
-  short_description: "Third isolated implementation stream"
-  default_prompt: "Use $senior-fullstack-developer-3 for another safe parallel implementation slice."
-
-policy:
-  allow_implicit_invocation: true

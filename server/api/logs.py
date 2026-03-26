@@ -1,10 +1,10 @@
-# - API логов: in-memory кольцевой буфер от агента
+# API логов: in-memory кольцевой буфер от агента
 from collections import deque
 from fastapi import APIRouter, Query
 
 router = APIRouter()
 
-# - Кольцевой буфер логов, макс. 5000 записей
+# Кольцевой буфер логов, макс. 5000 записей
 _log_buffer: deque[dict[str, object]] = deque(maxlen=5000)
 
 

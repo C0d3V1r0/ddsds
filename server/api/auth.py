@@ -1,4 +1,4 @@
-# - Middleware аутентификации API-запросов через Bearer-токен
+# Middleware аутентификации API-запросов через Bearer-токен
 import hmac
 from fastapi import HTTPException, Request
 
@@ -6,14 +6,14 @@ _api_token: str = ""
 
 
 def set_api_token(token: str) -> None:
-    """- Устанавливает токен для проверки в middleware"""
+    """Устанавливает токен для проверки в middleware."""
     global _api_token
     _api_token = token
 
 
 def require_auth(request: Request) -> None:
-    """- Проверяет Bearer-токен в заголовке Authorization"""
-    # - Пустой токен означает отключённую аутентификацию (тесты, dev без секрета)
+    """Проверяет Bearer-токен в заголовке Authorization."""
+    # Пустой токен — аутентификация отключена (тесты, dev без секрета)
     if not _api_token:
         return
     auth = request.headers.get("Authorization", "")

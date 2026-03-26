@@ -1,11 +1,50 @@
+# OS / file manager noise
+.DS_Store
+Thumbs.db
+
+# Local AI / planning artifacts
 .superpowers/
-server/venv/
+.agents/
+plugins/
+AGENTS.md
+docs/superpowers/
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Python
 *.pyc
+*.pyo
+*.pyd
 __pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+server/venv/
+
+# Python runtime data
+server/data/*.db
+server/data/*.db-shm
+server/data/*.db-wal
 server/ml/models/*.joblib
-dist/
+
+# Node / frontend
 web/node_modules/
 web/dist/
-.DS_Store
-server/.pytest_cache/
-server/data/*.db
+coverage/
+
+# Build artifacts
+dist/
+agent/nullius-agent
+
+# Logs / env
+*.log
+.env
+.env.*

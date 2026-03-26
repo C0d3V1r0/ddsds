@@ -1,9 +1,9 @@
-# - Извлечение признаков из сырых метрик и логов для ML-моделей
+# Извлечение признаков из сырых метрик и логов для ML-моделей
 import json
 
 
 def extract_metrics_features(raw: dict) -> list[float]:
-    """- Извлекает числовые признаки из словаря метрик для anomaly detector"""
+    """Извлекает числовые признаки из словаря метрик для anomaly detector"""
     cpu = float(raw.get("cpu_total", 0) or 0)
     ram_used = float(raw.get("ram_used", 0) or 0)
     ram_total = float(raw.get("ram_total", 1) or 1)
@@ -26,5 +26,5 @@ def extract_metrics_features(raw: dict) -> list[float]:
 
 
 def extract_log_features(line: str) -> str:
-    """- Нормализует строку лога для text classifier"""
+    """Нормализует строку лога для text classifier"""
     return line.strip().lower()

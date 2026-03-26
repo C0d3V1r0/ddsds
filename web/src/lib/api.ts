@@ -1,32 +1,18 @@
-// - HTTP-клиент для взаимодействия с backend API
+// HTTP-клиент для взаимодействия с backend API
 import type { HealthStatus, Metrics, ServiceInfo, ProcessInfo, LogEntry, SecurityEvent, BlockedIP } from '../types';
 
 const BASE = import.meta.env.VITE_API_URL || '/api';
 
-let _authToken = '';
-
-export function setAuthToken(token: string): void {
-  _authToken = token;
-}
-
-export function getAuthToken(): string {
-  return _authToken;
-}
-
 function headers(): HeadersInit {
-  const h: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (_authToken) h['Authorization'] = `Bearer ${_authToken}`;
-  return h;
+  return { 'Content-Type': 'application/json' };
 }
 
-// - Обёртка для GET-запросов с типизированным ответом
 async function get<T>(path: string): Promise<T> {
   const resp = await fetch(`${BASE}${path}`, { headers: headers() });
   if (!resp.ok) throw new Error(`API error: ${resp.status}`);
   return resp.json() as Promise<T>;
 }
 
-// - Обёртка для POST-запросов с типизированным ответом
 async function post<T>(path: string, body?: unknown): Promise<T> {
   const resp = await fetch(`${BASE}${path}`, {
     method: 'POST',
@@ -37,10 +23,16 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
   return resp.json() as Promise<T>;
 }
 
+// Ответ ML-модуля: готовность детектора аномалий и классификатора атак
+interface MlStatusResponse {
+  anomaly_detector: { ready: boolean };
+  attack_classifier: { ready: boolean };
+}
+
 export const api = {
   health: () => get<HealthStatus>('/health'),
   metrics: () => get<Metrics | null>('/metrics'),
-  // - encodeURIComponent для защиты от инъекций в параметрах
+  // encodeURIComponent для защиты от инъекций в параметрах
   metricsHistory: (period: string) => get<Metrics[]>(`/metrics/history?period=${encodeURIComponent(period)}`),
   services: () => get<ServiceInfo[]>('/services'),
   processes: () => get<ProcessInfo[]>('/processes'),
@@ -52,4 +44,5 @@ export const api = {
   blockIP: (ip: string, reason: string, duration?: number) =>
     post<{ status: string }>('/security/block', { ip, reason, duration }),
   unblockIP: (ip: string) => post<{ status: string }>('/security/unblock', { ip }),
+  mlStatus: () => get<MlStatusResponse>('/ml/status'),
 };

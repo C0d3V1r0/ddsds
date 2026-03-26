@@ -1,9 +1,9 @@
-# - Эндпоинт проверки состояния сервера
+# Эндпоинт проверки состояния сервера
 from fastapi import APIRouter
 
 router = APIRouter()
 
-# - Состояние устанавливается из main.py при старте
+# Флаги устанавливаются из main.py при старте приложения
 _agent_connected = False
 _db_ok = False
 

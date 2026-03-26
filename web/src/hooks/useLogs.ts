@@ -1,4 +1,4 @@
-// - Хук для загрузки логов с REST + подписка на live-обновления через WS
+// Хук для загрузки логов с REST + подписка на live-обновления через WS
 import { useQuery } from '@tanstack/react-query';
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../lib/api';

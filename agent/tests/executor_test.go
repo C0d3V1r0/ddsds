@@ -13,6 +13,7 @@ func TestValidateIPv4(t *testing.T) {
 	if executor.ValidateIP("not-an-ip") {
 		t.Error("should reject invalid IP")
 	}
+	// Проверяем, что инъекция через IP не проходит валидацию
 	if executor.ValidateIP("192.168.1.1; rm -rf /") {
 		t.Error("should reject injection")
 	}
@@ -26,12 +27,14 @@ func TestValidateServiceName(t *testing.T) {
 	if executor.ValidateService("malicious", allowed) {
 		t.Error("should reject non-allowed service")
 	}
+	// Инъекция в имя сервиса — должна быть отброшена regex-ом
 	if executor.ValidateService("nginx; rm -rf /", allowed) {
 		t.Error("should reject injection in service name")
 	}
 }
 
 func TestDenyListPID(t *testing.T) {
+	// PID 1 — init/systemd, убивать нельзя
 	if !executor.IsDeniedPID(1) {
 		t.Error("PID 1 should be denied")
 	}
@@ -45,6 +48,7 @@ func TestValidateServiceNameRegex(t *testing.T) {
 	if !executor.ValidateService("test-service", allowed) {
 		t.Error("should accept hyphenated service name")
 	}
+	// Path traversal через имя сервиса — regex должен отрубить
 	if executor.ValidateService("../etc/passwd", allowed) {
 		t.Error("should reject path traversal")
 	}

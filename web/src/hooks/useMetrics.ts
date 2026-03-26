@@ -1,4 +1,4 @@
-// - Хуки для загрузки метрик с автообновлением
+// Хуки для загрузки метрик с автообновлением
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 

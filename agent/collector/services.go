@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// - Статус systemd-сервиса
+// ServiceStatus — состояние systemd-сервиса для отображения в дашборде
 type ServiceStatus struct {
 	Name   string `json:"name"`
 	Status string `json:"status"`
@@ -13,7 +13,8 @@ type ServiceStatus struct {
 	Uptime int    `json:"uptime"`
 }
 
-// - Сбор списка сервисов через systemctl
+// CollectServices опрашивает systemctl и возвращает список сервисов
+// со статусами running/stopped/failed
 func CollectServices() ([]ServiceStatus, error) {
 	out, err := exec.Command(
 		"systemctl", "list-units", "--type=service", "--no-pager", "--no-legend",

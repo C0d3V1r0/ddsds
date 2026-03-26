@@ -8,35 +8,36 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 )
 
-// - Метрики CPU: общая загрузка и по ядрам
+// CPUMetrics — загрузка процессора: общая и по ядрам (в процентах)
 type CPUMetrics struct {
 	Total float64   `json:"total"`
 	Cores []float64 `json:"cores"`
 }
 
-// - Метрики RAM: общий объём, использовано, процент
+// RAMMetrics — использование оперативной памяти в байтах и процентах
 type RAMMetrics struct {
 	Total   uint64  `json:"total"`
 	Used    uint64  `json:"used"`
 	Percent float64 `json:"percent"`
 }
 
-// - Метрики диска: точка монтирования, объём, использовано
+// DiskMetrics — использование файловой системы по точке монтирования
 type DiskMetrics struct {
 	Mount string `json:"mount"`
 	Total uint64 `json:"total"`
 	Used  uint64 `json:"used"`
 }
 
-// - Метрики сети: дельта принятых и отправленных байт
+// NetworkMetrics — дельта сетевого трафика с последнего замера (RX/TX в байтах)
 type NetworkMetrics struct {
 	RxBytesDelta uint64 `json:"rx_bytes_delta"`
 	TxBytesDelta uint64 `json:"tx_bytes_delta"`
 }
 
-// - Агрегированная структура всех метрик хоста
+// Metrics — полный снимок состояния хоста за один цикл сбора
 type Metrics struct {
 	CPU     CPUMetrics     `json:"cpu"`
 	RAM     RAMMetrics     `json:"ram"`
@@ -45,21 +46,20 @@ type Metrics struct {
 	LoadAvg []float64      `json:"load_avg"`
 }
 
-// - Предыдущие значения для вычисления дельты сетевого трафика, защищены мьютексом
+// Предыдущие значения для вычисления дельт между замерами.
+// Нужны потому что /proc отдаёт кумулятивные счётчики, а нам нужна разница.
 var (
 	netMu     sync.Mutex
 	prevNetRx uint64
 	prevNetTx uint64
-)
 
-// - Предыдущие значения CPU для вычисления дельты между замерами
-var (
 	cpuMu        sync.Mutex
 	prevCPUTotal uint64
 	prevCPUIdle  uint64
 )
 
-// - Сбор всех метрик хоста; работает только на Linux (procfs)
+// CollectMetrics собирает все метрики хоста за один вызов.
+// Работает только на Linux — читает procfs и statfs напрямую.
 func CollectMetrics() (*Metrics, error) {
 	if runtime.GOOS != "linux" {
 		return nil, fmt.Errorf("metrics collection only supported on Linux")
@@ -74,17 +74,19 @@ func CollectMetrics() (*Metrics, error) {
 	}
 	load, _ := readLoadAvg()
 	net, _ := readNetwork()
+	disk, _ := readDisk()
 
 	return &Metrics{
 		CPU:     *cpu,
 		RAM:     *ram,
-		Disk:    nil,
+		Disk:    disk,
 		Network: *net,
 		LoadAvg: load,
 	}, nil
 }
 
-// - Чтение загрузки CPU из /proc/stat
+// readCPU парсит /proc/stat — первая строка "cpu" даёт общую загрузку,
+// остальные "cpu0", "cpu1" — по ядрам
 func readCPU() (*CPUMetrics, error) {
 	f, err := os.Open("/proc/stat")
 	if err != nil {
@@ -105,7 +107,8 @@ func readCPU() (*CPUMetrics, error) {
 	return &CPUMetrics{Total: total, Cores: cores}, nil
 }
 
-// - Парсинг строки /proc/stat и вычисление дельты CPU между замерами
+// parseCPULine вычисляет % загрузки CPU как дельту между замерами.
+// Формула: (totalDelta - idleDelta) / totalDelta * 100
 func parseCPULine(line string) float64 {
 	fields := strings.Fields(line)
 	if len(fields) < 5 {
@@ -119,8 +122,7 @@ func parseCPULine(line string) float64 {
 	var total, idle uint64
 	for i, v := range vals {
 		total += v
-		// - Четвёртое поле (индекс 3) — idle time
-		if i == 3 {
+		if i == 3 { // четвёртое поле — idle time
 			idle = v
 		}
 	}
@@ -132,14 +134,14 @@ func parseCPULine(line string) float64 {
 	prevCPUIdle = idle
 	cpuMu.Unlock()
 
-	// - При первом вызове или нулевой дельте возвращаем 0
 	if deltaTotal == 0 {
 		return 0.0
 	}
 	return float64(deltaTotal-deltaIdle) / float64(deltaTotal) * 100.0
 }
 
-// - Чтение информации о RAM из /proc/meminfo
+// readRAM читает /proc/meminfo и считает used = total - available.
+// Значения в /proc в килобайтах, мы переводим в байты.
 func readRAM() (*RAMMetrics, error) {
 	f, err := os.Open("/proc/meminfo")
 	if err != nil {
@@ -163,11 +165,10 @@ func readRAM() (*RAMMetrics, error) {
 	if total > 0 {
 		percent = float64(used) / float64(total) * 100
 	}
-	// - Значения в /proc/meminfo в kB, переводим в байты
 	return &RAMMetrics{Total: total * 1024, Used: used * 1024, Percent: percent}, nil
 }
 
-// - Чтение load average из /proc/loadavg
+// readLoadAvg — load average за 1, 5 и 15 минут из /proc/loadavg
 func readLoadAvg() ([]float64, error) {
 	data, err := os.ReadFile("/proc/loadavg")
 	if err != nil {
@@ -182,7 +183,8 @@ func readLoadAvg() ([]float64, error) {
 	return load, nil
 }
 
-// - Чтение сетевой статистики из /proc/net/dev, вычисление дельты
+// readNetwork суммирует RX/TX по всем интерфейсам (кроме lo) из /proc/net/dev.
+// Возвращает дельту с прошлого вызова. Первый вызов всегда отдаёт нули.
 func readNetwork() (*NetworkMetrics, error) {
 	f, err := os.Open("/proc/net/dev")
 	if err != nil {
@@ -201,7 +203,6 @@ func readNetwork() (*NetworkMetrics, error) {
 			continue
 		}
 		iface := strings.TrimSuffix(parts[0], ":")
-		// - Исключаем loopback-интерфейс
 		if iface == "lo" {
 			continue
 		}
@@ -213,7 +214,6 @@ func readNetwork() (*NetworkMetrics, error) {
 	netMu.Lock()
 	deltaRx := totalRx - prevNetRx
 	deltaTx := totalTx - prevNetTx
-	// - При первом вызове дельта неинформативна, обнуляем
 	if prevNetRx == 0 {
 		deltaRx = 0
 		deltaTx = 0
@@ -222,4 +222,23 @@ func readNetwork() (*NetworkMetrics, error) {
 	prevNetTx = totalTx
 	netMu.Unlock()
 	return &NetworkMetrics{RxBytesDelta: deltaRx, TxBytesDelta: deltaTx}, nil
+}
+
+// readDisk — использование корневой ФС через syscall.Statfs.
+// Возвращаем слайс на случай, если понадобится мониторить несколько точек.
+func readDisk() ([]DiskMetrics, error) {
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs("/", &stat); err != nil {
+		return nil, err
+	}
+
+	total := stat.Blocks * uint64(stat.Bsize)
+	available := stat.Bavail * uint64(stat.Bsize)
+	used := total - available
+
+	return []DiskMetrics{{
+		Mount: "/",
+		Total: total,
+		Used:  used,
+	}}, nil
 }

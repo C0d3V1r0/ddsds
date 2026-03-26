@@ -5,7 +5,8 @@ import (
 	"os/exec"
 )
 
-// - Блокировка IP через iptables; expiry управляется API-сервером
+// blockIP добавляет правило iptables для блокировки входящего трафика от IP.
+// Время жизни блокировки контролирует API-сервер через expired_at.
 func blockIP(ip string) (string, error) {
 	if !ValidateIP(ip) {
 		return "", fmt.Errorf("invalid IP: %s", ip)
@@ -17,6 +18,7 @@ func blockIP(ip string) (string, error) {
 	return "success", nil
 }
 
+// unblockIP удаляет правило блокировки для указанного IP
 func unblockIP(ip string) (string, error) {
 	if !ValidateIP(ip) {
 		return "", fmt.Errorf("invalid IP: %s", ip)

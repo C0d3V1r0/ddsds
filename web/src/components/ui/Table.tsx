@@ -19,7 +19,8 @@ export function Table<T extends object>({ columns, data, keyField, testId }: Tab
   if (data.length === 0) {
     return (
       <div data-testid={testId} className="text-sm text-text-secondary text-center py-8">
-        {t.table.noData}
+        <div>{t.table.noData}</div>
+        <div className="mt-1 text-xs text-text-secondary/80">{t.table.noDataHint}</div>
       </div>
     );
   }

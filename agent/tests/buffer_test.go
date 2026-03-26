@@ -6,7 +6,7 @@ import (
 	"github.com/nullius/agent/buffer"
 )
 
-// - проверяет базовое добавление и извлечение элементов
+// Базовый сценарий: push 2 элемента, drain — должны получить оба в правильном порядке
 func TestRingBufferBasic(t *testing.T) {
 	rb := buffer.New(3)
 	rb.Push([]byte("a"))
@@ -21,7 +21,7 @@ func TestRingBufferBasic(t *testing.T) {
 	}
 }
 
-// - проверяет что при переполнении старые элементы затираются
+// Переполнение: capacity=3, пушим 4 — самый старый ("a") должен быть затёрт
 func TestRingBufferOverflow(t *testing.T) {
 	rb := buffer.New(3)
 	rb.Push([]byte("a"))
@@ -38,7 +38,7 @@ func TestRingBufferOverflow(t *testing.T) {
 	}
 }
 
-// - проверяет что после drain буфер пуст
+// После drain буфер должен быть пуст
 func TestRingBufferDrainEmpties(t *testing.T) {
 	rb := buffer.New(5)
 	rb.Push([]byte("x"))
@@ -50,7 +50,7 @@ func TestRingBufferDrainEmpties(t *testing.T) {
 	}
 }
 
-// - проверяет что нулевой capacity вызывает панику
+// Нулевой capacity — программистская ошибка, должна быть паника
 func TestRingBufferZeroCapacityPanics(t *testing.T) {
 	defer func() {
 		r := recover()
@@ -61,7 +61,7 @@ func TestRingBufferZeroCapacityPanics(t *testing.T) {
 	buffer.New(0)
 }
 
-// - проверяет что отрицательный capacity вызывает панику
+// Отрицательный capacity — аналогично
 func TestRingBufferNegativeCapacityPanics(t *testing.T) {
 	defer func() {
 		r := recover()

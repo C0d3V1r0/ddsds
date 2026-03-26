@@ -1,4 +1,4 @@
-// - Страница логов: live-стрим с фильтрацией, поиском и подсветкой подозрительных строк
+// Страница логов: live-стрим с фильтрацией, поиском и подсветкой подозрительных строк
 import { useState, useRef, useEffect } from 'react';
 import { useLogs } from '../hooks/useLogs';
 import { Card } from '../components/ui/Card';
@@ -14,7 +14,7 @@ export function Logs() {
   const logsEndRef = useRef<HTMLDivElement>(null);
   const { data: logs, clearLive, isError: logsError } = useLogs(source || undefined);
 
-  // - Автоскролл при получении новых логов
+  // Автоскролл при получении новых логов
   useEffect(() => {
     if (autoScroll && logsEndRef.current) {
       logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
@@ -79,7 +79,10 @@ export function Logs() {
           );
         })}
         {filtered.length === 0 && (
-          <div data-testid="logs-empty" className="text-text-secondary text-center py-8">{t.logs.noLogs}</div>
+          <div data-testid="logs-empty" className="text-text-secondary text-center py-8">
+            <div>{t.logs.noLogs}</div>
+            <div className="mt-1 text-xs text-text-secondary/80">{t.common.noDataHint}</div>
+          </div>
         )}
         <div ref={logsEndRef} />
       </Card>

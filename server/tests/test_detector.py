@@ -1,4 +1,4 @@
-# - Тесты детектора угроз: SSH brute-force, веб-атаки
+# Тесты детектора угроз: SSH brute-force, веб-атаки
 import pytest
 from security.detector import Detector
 from config import load_config

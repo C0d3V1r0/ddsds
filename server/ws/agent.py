@@ -1,4 +1,4 @@
-# - WebSocket-обработчик агента: аутентификация, приём метрик, логов, сервисов, процессов
+# WebSocket-обработчик агента: аутентификация, приём метрик, логов, сервисов, процессов
 import hmac
 import json
 import logging
@@ -11,8 +11,11 @@ from api import health
 
 _logger = logging.getLogger("nullius.ws.agent")
 
-# - Длительность блокировки IP по умолчанию (24 часа)
+# Длительность блокировки IP по умолчанию (24 часа)
 DEFAULT_BLOCK_DURATION = 86400
+MAX_LOG_LINE_CHARS = 4096
+MAX_LOG_SOURCE_CHARS = 64
+MAX_LOG_FILE_CHARS = 512
 
 _agent_ws: WebSocket | None = None
 _detector = None
@@ -34,10 +37,10 @@ def init_security(detector, responder, config=None):
 async def agent_ws_handler(ws: WebSocket, secret: str):
     global _agent_ws
     await ws.accept()
-    # - Первое сообщение должно быть auth с корректным секретом
+    # Первое сообщение должно быть auth с корректным секретом
     try:
         msg = await ws.receive_json()
-        # - Timing-safe сравнение для защиты от атак по времени отклика
+        # Timing-safe сравнение для защиты от атак по времени отклика
         if msg.get("type") != "auth" or not hmac.compare_digest(msg.get("secret", ""), secret):
             await ws.send_json({"type": "auth_error", "error": "invalid secret"})
             await ws.close(code=4001)
@@ -46,13 +49,13 @@ async def agent_ws_handler(ws: WebSocket, secret: str):
     except WebSocketDisconnect:
         return
     except Exception as e:
-        _logger.warning(f"# - Ошибка при аутентификации агента: {e}")
+        _logger.warning(f"Ошибка при аутентификации агента: {e}")
         await ws.close(code=4001)
         return
 
-    # - Закрываем предыдущее подключение агента, если оно существует
+    # Закрываем предыдущее подключение агента, если оно существует
     if _agent_ws is not None:
-        _logger.warning("# - Новое подключение агента вытесняет предыдущее")
+        _logger.warning("Новое подключение агента вытесняет предыдущее")
         try:
             await _agent_ws.close(code=4000)
         except Exception:
@@ -74,7 +77,7 @@ async def agent_ws_handler(ws: WebSocket, secret: str):
             elif msg_type == "processes":
                 update_processes(msg.get("data", []))
             elif msg_type == "command_result":
-                # - Сохраняем результат команды в таблицу agent_commands
+                # Сохраняем результат команды в таблицу agent_commands
                 await enqueue_write(
                     "INSERT INTO agent_commands (timestamp, command, params, result, error) "
                     "VALUES (?, ?, ?, ?, ?)",
@@ -92,11 +95,11 @@ async def agent_ws_handler(ws: WebSocket, secret: str):
 
 
 def _validate_timestamp(ts: object) -> int:
-    """- Проверяет что timestamp — целое число в разумном диапазоне (последние 24ч, не в будущем)"""
+    """Проверяет что timestamp — целое число в разумном диапазоне (последние 24ч, не в будущем)"""
     now = int(time.time())
     if not isinstance(ts, int):
         return now
-    # - Допускаем 5 минут в будущем для компенсации рассинхрона часов
+    # Допускаем 5 минут в будущем для компенсации рассинхрона часов
     if ts > now + 300 or ts < now - 86400:
         return now
     return ts
@@ -105,7 +108,7 @@ def _validate_timestamp(ts: object) -> int:
 async def _handle_metrics(msg: dict):
     data = msg.get("data", {})
     if not isinstance(data, dict):
-        _logger.warning("# - Невалидный формат data в metrics: ожидается dict")
+        _logger.warning("Невалидный формат data в metrics: ожидается dict")
         return
     ts = _validate_timestamp(msg.get("timestamp", int(time.time())))
     cpu = data.get("cpu", {})
@@ -120,7 +123,7 @@ async def _handle_metrics(msg: dict):
          json.dumps(data.get("load_avg", [])), json.dumps(data.get("disk", [])))
     )
 
-    # - ML: проверяем метрики на аномалии через Isolation Forest
+    # ML: проверяем метрики на аномалии через Isolation Forest
     try:
         from ml.trainer import get_anomaly_detector
         from ml.features import extract_metrics_features
@@ -152,23 +155,25 @@ async def _handle_metrics(msg: dict):
                 from ws.frontend import broadcast
                 await broadcast({"type": "security_event", "data": event})
     except Exception as exc:
-        _logger.debug(f"# - ML anomaly check пропущен: {exc}")
+        _logger.debug(f"ML anomaly check пропущен: {exc}")
 
 
 async def _handle_log(msg: dict):
     data = msg.get("data", {})
     if not isinstance(data, dict):
-        _logger.warning("# - Невалидный формат data в log_event: ожидается dict")
+        _logger.warning("Невалидный формат data в log_event: ожидается dict")
         return
     log_entry = {
         "timestamp": _validate_timestamp(msg.get("timestamp", int(time.time()))),
-        "source": data.get("source", ""),
-        "line": data.get("line", ""),
-        "file": data.get("file", ""),
+        "source": str(data.get("source", ""))[:MAX_LOG_SOURCE_CHARS],
+        "line": str(data.get("line", ""))[:MAX_LOG_LINE_CHARS],
+        "file": str(data.get("file", ""))[:MAX_LOG_FILE_CHARS],
     }
     append_log(log_entry)
+    from ws.frontend import broadcast
+    await broadcast({"type": "log", "data": log_entry})
 
-    # - ML: классификатор как second opinion для логов
+    # ML: классификатор как second opinion для логов
     ml_event = None
     try:
         from ml.trainer import get_classifier
@@ -180,13 +185,13 @@ async def _handle_log(msg: dict):
             if ml_result["label"] not in ("normal", "unknown"):
                 ml_event = ml_result
     except Exception as exc:
-        _logger.debug(f"# - ML classify пропущен: {exc}")
+        _logger.debug(f"ML classify пропущен: {exc}")
 
     if _detector is None:
         return
     event = _detector.check_log(data)
 
-    # - Если rule-based не сработал, но ML обнаружил атаку — создаём событие с low severity
+    # Если rule-based не сработал, но ML обнаружил атаку — создаём событие с low severity
     if event is None and ml_event is not None:
         ts = msg.get("timestamp", int(time.time()))
         event = {
@@ -201,7 +206,6 @@ async def _handle_log(msg: dict):
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
             (ts, event["type"], event["severity"], "", event["description"], event["raw_log"], "ml_detection")
         )
-        from ws.frontend import broadcast
         await broadcast({"type": "security_event", "data": event})
         return
 
@@ -216,7 +220,7 @@ async def _handle_log(msg: dict):
     )
     action = _responder.decide(event)
     if action["action"] == "block":
-        # - Длительность блокировки берём из конфига, 86400 — фоллбэк по умолчанию
+        # Длительность блокировки берём из конфига, 86400 — фоллбэк по умолчанию
         block_duration = _config.ssh_brute_force.block_duration if _config else DEFAULT_BLOCK_DURATION
         await send_command("block_ip", {"ip": action["ip"], "duration": block_duration})
         await enqueue_write(
@@ -224,14 +228,13 @@ async def _handle_log(msg: dict):
             "VALUES (?, ?, ?, ?, 1)",
             (action["ip"], event["description"], ts, ts + block_duration)
         )
-    from ws.frontend import broadcast
     await broadcast({"type": "security_event", "data": event})
 
 
 async def _handle_services(msg: dict):
     services = msg.get("data", [])
     if not isinstance(services, list):
-        _logger.warning("# - Невалидный формат data в services: ожидается list")
+        _logger.warning("Невалидный формат data в services: ожидается list")
         return
     now = int(time.time())
     for svc in services:

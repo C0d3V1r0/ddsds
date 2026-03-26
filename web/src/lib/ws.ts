@@ -1,6 +1,4 @@
-// - WebSocket-клиент для получения real-time обновлений от агента
-import { getAuthToken } from './api';
-
+// WebSocket-клиент для получения real-time обновлений от агента
 type Listener = (event: Record<string, unknown>) => void;
 type StatusListener = (connected: boolean) => void;
 
@@ -11,9 +9,9 @@ let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 let shouldReconnect = false;
 
-// - Устанавливает WS-соединение с автоматическим переподключением
+// Устанавливает WS-соединение с автоматическим переподключением
 export function connectWS(): void {
-  // - Предотвращаем множественные соединения (StrictMode)
+  // Предотвращаем множественные соединения (StrictMode вызывает эффект дважды)
   if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
     return;
   }
@@ -23,14 +21,13 @@ export function connectWS(): void {
   socket = new WebSocket(`${protocol}//${location.host}/ws/live`);
 
   socket.onmessage = (msgEvent) => {
-    // - Парсим JSON безопасно, игнорируя невалидные сообщения
     let data: Record<string, unknown>;
     try {
       data = JSON.parse(msgEvent.data) as Record<string, unknown>;
     } catch {
       return;
     }
-    // - Pong-ответы на heartbeat не пробрасываем подписчикам
+    // Pong-ответы на heartbeat не пробрасываем подписчикам
     if (data.type === 'pong') return;
     listeners.forEach((fn) => fn(data));
   };
@@ -39,20 +36,15 @@ export function connectWS(): void {
     if (heartbeatInterval) clearInterval(heartbeatInterval);
     heartbeatInterval = null;
     statusListeners.forEach((fn) => fn(false));
-    // - Переподключение через 3 секунды, только если не вызван disconnectWS
+    // Переподключение через 3с, только если не вызван disconnectWS
     if (shouldReconnect) {
       reconnectTimeout = setTimeout(connectWS, 3000);
     }
   };
 
   socket.onopen = () => {
-    // - Отправляем токен аутентификации при подключении
-    const token = getAuthToken();
-    if (token) {
-      socket?.send(JSON.stringify({ type: 'auth', token }));
-    }
     statusListeners.forEach((fn) => fn(true));
-    // - Heartbeat каждые 15 секунд чтобы соединение не закрывалось
+    // Heartbeat каждые 15с чтобы соединение не закрывалось по таймауту
     heartbeatInterval = setInterval(() => {
       if (socket?.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({ type: 'ping' }));
@@ -61,7 +53,7 @@ export function connectWS(): void {
   };
 }
 
-// - Закрывает соединение и останавливает переподключение
+// Закрывает соединение и останавливает переподключение
 export function disconnectWS(): void {
   shouldReconnect = false;
   if (reconnectTimeout) {
@@ -78,13 +70,13 @@ export function disconnectWS(): void {
   }
 }
 
-// - Подписка на live-события, возвращает функцию отписки
+// Подписка на live-события, возвращает функцию отписки
 export function onLiveEvent(fn: Listener): () => void {
   listeners.add(fn);
   return () => { listeners.delete(fn); };
 }
 
-// - Подписка на статус соединения (connected/disconnected)
+// Подписка на статус соединения (connected/disconnected)
 export function onStatusChange(fn: StatusListener): () => void {
   statusListeners.add(fn);
   return () => { statusListeners.delete(fn); };
