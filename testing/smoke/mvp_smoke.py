@@ -164,16 +164,38 @@ def check_process_collection() -> None:
 
 def check_log_collection() -> None:
     marker = f"nullius-smoke-{int(time.time())}"
-    subprocess.run(["logger", marker], check=True)
+    password = load_password()
+    if not password:
+        fail("Dashboard password not found for log smoke check")
+
+    req = urllib.request.Request(
+        f"{DASHBOARD_URL}/{marker}",
+        headers={
+            "Authorization": f"Basic {b64encode(f'{DASHBOARD_USER}:{password}'.encode()).decode()}",
+            "User-Agent": f"nullius-smoke/{marker}",
+        },
+        method="GET",
+    )
+    try:
+        urllib.request.urlopen(req, timeout=5, context=SSL_CONTEXT)
+    except urllib.error.HTTPError:
+        # - 404 тоже подходит: nginx access log всё равно должен содержать запрос
+        pass
+    except Exception as exc:
+        fail(f"Failed to generate nginx access log entry: {exc}")
 
     def has_marker():
         logs = request_json("/api/logs?limit=200")
         if not isinstance(logs, list):
             return False
-        return any(isinstance(item, dict) and marker in str(item.get("line", "")) for item in logs)
+        return any(
+            isinstance(item, dict)
+            and marker in str(item.get("line", ""))
+            for item in logs
+        )
 
-    wait_for(has_marker, timeout=20, interval=2, description="Generated log entry was not visible via /api/logs")
-    pass_msg("Generated log entry is visible in logs")
+    wait_for(has_marker, timeout=20, interval=2, description="Generated nginx access log entry was not visible via /api/logs")
+    pass_msg("Generated nginx access log entry is visible in logs")
 
 
 def check_block_unblock() -> None:
