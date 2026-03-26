@@ -109,7 +109,8 @@ def create_app(
     # - Секрет для аутентификации агента: приоритет env > файл > дефолт для разработки
     agent_secret = os.environ.get("NULLIUS_AGENT_SECRET", "")
     if not agent_secret:
-        key_path = Path(config_path).parent / "config" / "agent.key"
+        # - Для install.sh key лежит рядом с nullius.yaml: /opt/nullius/config/{nullius.yaml,agent.key}
+        key_path = Path(config_path).with_name("agent.key")
         if key_path.exists():
             agent_secret = key_path.read_text().strip()
     if not agent_secret:
