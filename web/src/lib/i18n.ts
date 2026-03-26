@@ -101,6 +101,8 @@ export const t = {
   header: {
     agentConnected: 'Агент подключён',
     agentDisconnected: 'Агент отключён',
+    liveConnected: 'Live-канал подключён',
+    liveDisconnected: 'Live-канал отключён',
   },
 
   // - Badge/Status

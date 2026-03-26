@@ -36,10 +36,16 @@ class MLConfig(BaseModel):
     sensitivity: str = "medium"
 
 
+class APIConfig(BaseModel):
+    require_bearer_auth: bool = False
+    require_ws_token: bool = False
+
+
 class NulliusConfig(BaseModel):
     agent: AgentConfig = AgentConfig()
     security: SecurityConfig = SecurityConfig()
     ml: MLConfig = MLConfig()
+    api: APIConfig = APIConfig()
 
 
 def load_config(path: str) -> NulliusConfig:

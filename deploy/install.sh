@@ -194,6 +194,10 @@ ml:
   anomaly_detection: true
   training_period: 86400
   sensitivity: medium
+
+api:
+  require_bearer_auth: false
+  require_ws_token: false
 YAML
     echo "  Создан nullius.yaml"
 else

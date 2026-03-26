@@ -10,13 +10,16 @@ import { Processes } from '../pages/Processes';
 import { Logs } from '../pages/Logs';
 import { Settings } from '../pages/Settings';
 import { connectWS, disconnectWS } from '../lib/ws';
+import { useSystemStatus } from '../hooks/useSystemStatus';
 
 // - Глобальный QueryClient с рефетчем каждые 5 секунд по умолчанию
 const queryClient = new QueryClient({
   defaultOptions: { queries: { refetchInterval: 5000 } },
 });
 
-export function App() {
+function AppShell() {
+  useSystemStatus();
+
   // - Подключаем WebSocket при монтировании, отключаем при размонтировании
   useEffect(() => {
     connectWS();
@@ -24,24 +27,30 @@ export function App() {
   }, []);
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <div className="flex min-h-screen">
-          <Sidebar />
-          <div className="flex-1 ml-56">
-            <Header />
-            <main className="p-6">
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/security" element={<Security />} />
-                <Route path="/processes" element={<Processes />} />
-                <Route path="/logs" element={<Logs />} />
-                <Route path="/settings" element={<Settings />} />
-              </Routes>
-            </main>
-          </div>
+    <BrowserRouter>
+      <div className="flex min-h-screen">
+        <Sidebar />
+        <div className="flex-1 ml-56">
+          <Header />
+          <main className="p-6">
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/security" element={<Security />} />
+              <Route path="/processes" element={<Processes />} />
+              <Route path="/logs" element={<Logs />} />
+              <Route path="/settings" element={<Settings />} />
+            </Routes>
+          </main>
         </div>
-      </BrowserRouter>
+      </div>
+    </BrowserRouter>
+  );
+}
+
+export function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AppShell />
     </QueryClientProvider>
   );
 }

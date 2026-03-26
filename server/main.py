@@ -35,7 +35,7 @@ def get_db_path() -> str:
     return os.environ.get("NULLIUS_DB", "data/nullius.db")
 
 
-async def create_app(
+def create_app(
     config_path: str = "nullius.yaml",
     db_path: str = "data/nullius.db",
 ) -> FastAPI:
@@ -120,8 +120,8 @@ async def create_app(
             "Задайте через env или config/agent.key для продакшна!"
         )
 
-    # - Устанавливаем API-токен для REST-аутентификации
-    set_api_token(agent_secret)
+    # - Bearer auth для UI/API включается только если это явно разрешено конфигом
+    set_api_token(agent_secret if config.api.require_bearer_auth else "")
 
     app = FastAPI(title="Nullius API", lifespan=lifespan)
 
@@ -151,18 +151,16 @@ async def create_app(
 
     @app.websocket("/ws/live")
     async def ws_live(ws: WebSocket):
-        await frontend_ws_handler(ws, agent_secret)
+        await frontend_ws_handler(ws, agent_secret if config.api.require_ws_token else "")
 
     return app
 
 
 def app_factory() -> FastAPI:
     """Синхронная фабрика для uvicorn --factory."""
-    return asyncio.run(
-        create_app(
-            config_path=get_config_path(),
-            db_path=get_db_path(),
-        )
+    return create_app(
+        config_path=get_config_path(),
+        db_path=get_db_path(),
     )
 
 
@@ -170,7 +168,7 @@ if __name__ == "__main__":
     import uvicorn
 
     async def run() -> None:
-        app = await create_app(
+        app = create_app(
             config_path=get_config_path(),
             db_path=get_db_path(),
         )

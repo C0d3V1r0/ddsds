@@ -21,12 +21,12 @@ function isSecurityEvent(data: unknown): data is SecurityEvent {
 export function useWebSocket() {
   const setCurrentMetrics = useStore((s) => s.setCurrentMetrics);
   const addSecurityEvent = useStore((s) => s.addSecurityEvent);
-  const setAgentStatus = useStore((s) => s.setAgentStatus);
+  const setLiveStatus = useStore((s) => s.setLiveStatus);
 
   useEffect(() => {
-    // - Подписка на реальный статус WS-соединения
+    // - WebSocket-статус не равен статусу агента, храним его отдельно
     const unsubStatus = onStatusChange((connected) => {
-      setAgentStatus(connected ? 'connected' : 'disconnected');
+      setLiveStatus(connected ? 'connected' : 'disconnected');
     });
 
     const unsubEvents = onLiveEvent((event) => {
@@ -41,5 +41,5 @@ export function useWebSocket() {
       unsubEvents();
       unsubStatus();
     };
-  }, [setCurrentMetrics, addSecurityEvent, setAgentStatus]);
+  }, [setCurrentMetrics, addSecurityEvent, setLiveStatus]);
 }

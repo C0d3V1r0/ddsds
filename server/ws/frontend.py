@@ -17,15 +17,17 @@ async def frontend_ws_handler(ws: WebSocket, api_token: str) -> None:
         await ws.close(code=1008)
         return
     await ws.accept()
-    # - Проверка токена в первом сообщении
-    try:
-        first_msg = await asyncio.wait_for(ws.receive_json(), timeout=5.0)
-        if not hmac.compare_digest(first_msg.get("token", ""), api_token):
+
+    # - Проверка токена нужна только если она явно включена конфигом
+    if api_token:
+        try:
+            first_msg = await asyncio.wait_for(ws.receive_json(), timeout=5.0)
+            if not hmac.compare_digest(first_msg.get("token", ""), api_token):
+                await ws.close(code=4001, reason="Unauthorized")
+                return
+        except Exception:
             await ws.close(code=4001, reason="Unauthorized")
             return
-    except Exception:
-        await ws.close(code=4001, reason="Unauthorized")
-        return
     _clients.add(ws)
     try:
         while True:
