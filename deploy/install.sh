@@ -48,6 +48,11 @@ esac
 echo "  ОС: $(lsb_release -ds 2>/dev/null || cat /etc/os-release | grep PRETTY_NAME | cut -d= -f2)"
 echo "  Архитектура: $ARCH"
 
+# - install.sh ожидает полный release-пакет из dist/
+[[ -f "$SCRIPT_DIR/$AGENT_BINARY" ]] || fail "Не найден $AGENT_BINARY рядом с install.sh. Запускайте установку из собранного dist/."
+[[ -f "$SCRIPT_DIR/server.tar.gz" ]] || fail "Не найден server.tar.gz рядом с install.sh. Сначала соберите релиз через deploy/build.sh."
+[[ -d "$SCRIPT_DIR/web" ]] || fail "Не найдена директория web рядом с install.sh. Запускайте установку из собранного dist/."
+
 # ============================================================
 # - 1. Системные зависимости
 # ============================================================
@@ -154,23 +159,38 @@ fi
 if [[ ! -f "$INSTALL_DIR/config/nullius.yaml" ]]; then
     cat > "$INSTALL_DIR/config/nullius.yaml" <<'YAML'
 # - Конфигурация Nullius
-server:
-  host: 127.0.0.1
-  port: 8000
-
 agent:
-  interval_sec: 60
+  metrics_interval: 5
+  services_interval: 30
+  processes_interval: 10
+  server_url: ws://127.0.0.1:8000/ws/agent
+  tls_skip_verify: false
+  log_sources:
+    - /var/log/auth.log
+    - /var/log/nginx/access.log
+    - /var/log/nginx/error.log
 
-database:
-  path: /opt/nullius/data/nullius.db
-
-logs:
-  dir: /opt/nullius/logs
-  level: info
+security:
+  ssh_brute_force:
+    threshold: 5
+    window: 300
+    action: block
+    block_duration: 86400
+  web_attacks:
+    enabled: true
+    action: block
+  auto_block: true
+  allowed_services:
+    - nginx
+    - postgresql
+    - redis
+    - mysql
+    - docker
 
 ml:
-  models_dir: /opt/nullius/models
-  anomaly_threshold: 0.7
+  anomaly_detection: true
+  training_period: 86400
+  sensitivity: medium
 YAML
     echo "  Создан nullius.yaml"
 else

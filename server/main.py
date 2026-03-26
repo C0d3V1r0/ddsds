@@ -25,6 +25,16 @@ _writer_task = None
 _bg_tasks: list = []
 
 
+def get_config_path() -> str:
+    """Возвращает путь к YAML-конфигу с учётом env-переопределения."""
+    return os.environ.get("NULLIUS_CONFIG", "nullius.yaml")
+
+
+def get_db_path() -> str:
+    """Возвращает путь к SQLite БД с учётом env-переопределения."""
+    return os.environ.get("NULLIUS_DB", "data/nullius.db")
+
+
 async def create_app(
     config_path: str = "nullius.yaml",
     db_path: str = "data/nullius.db",
@@ -146,11 +156,24 @@ async def create_app(
     return app
 
 
+def app_factory() -> FastAPI:
+    """Синхронная фабрика для uvicorn --factory."""
+    return asyncio.run(
+        create_app(
+            config_path=get_config_path(),
+            db_path=get_db_path(),
+        )
+    )
+
+
 if __name__ == "__main__":
     import uvicorn
 
     async def run() -> None:
-        app = await create_app()
+        app = await create_app(
+            config_path=get_config_path(),
+            db_path=get_db_path(),
+        )
         uvi_config = uvicorn.Config(app, host="127.0.0.1", port=8000)
         server = uvicorn.Server(uvi_config)
         await server.serve()
