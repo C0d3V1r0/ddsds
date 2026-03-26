@@ -1,0 +1,43 @@
+{
+  "name": "codex-team-roles",
+  "version": "1.0.0",
+  "description": "A local Codex bundle with reusable team roles for planning, implementation, UX, and QA.",
+  "author": {
+    "name": "t00r1",
+    "email": "local@example.com",
+    "url": "https://example.com/local"
+  },
+  "homepage": "https://example.com/local/codex-team-roles",
+  "repository": "https://example.com/local/codex-team-roles",
+  "license": "UNLICENSED",
+  "keywords": [
+    "codex",
+    "agents",
+    "skills",
+    "qa",
+    "ux",
+    "tech-lead"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Codex Team Roles",
+    "shortDescription": "Reusable planning, dev, QA, and UX roles",
+    "longDescription": "A local plugin bundle that provides specialized Codex roles for tech lead, development, QA, and UX work.",
+    "developerName": "Local Workspace",
+    "category": "Productivity",
+    "capabilities": [
+      "Plan",
+      "Write",
+      "Review"
+    ],
+    "websiteURL": "https://example.com/local",
+    "privacyPolicyURL": "https://example.com/local/privacy",
+    "termsOfServiceURL": "https://example.com/local/terms",
+    "defaultPrompt": [
+      "Use $tech-lead to split this feature into safe implementation steps.",
+      "Use $qa to review this diff and list the highest-risk issues first.",
+      "Use $ux-designer to write a text UI spec for this screen."
+    ],
+    "brandColor": "#2563EB"
+  }
+}

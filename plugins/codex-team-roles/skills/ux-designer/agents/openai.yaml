@@ -1,0 +1,7 @@
+interface:
+  display_name: "UX Designer"
+  short_description: "Writes implementable UI and UX specs"
+  default_prompt: "Use $ux-designer to produce a text UI spec with states, layout, and accessibility notes."
+
+policy:
+  allow_implicit_invocation: true

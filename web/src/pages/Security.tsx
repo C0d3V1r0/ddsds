@@ -64,11 +64,12 @@ export function Security() {
   };
 
   return (
-    <div className="space-y-6">
+    <div data-testid="page-security" className="space-y-6">
       {/* - Фильтр по типу события */}
       <div className="flex items-center gap-4">
         <h1 className="text-xl font-bold">{t.security.title}</h1>
         <select
+          data-testid="security-event-filter"
           value={filterType}
           onChange={(evt) => setFilterType(evt.target.value)}
           className="bg-bg-card border border-border rounded px-3 py-1.5 text-sm text-text-primary"
@@ -81,17 +82,18 @@ export function Security() {
       </div>
 
       {/* - Таблица событий */}
-      <Card title={t.security.events}>
-        {eventsError && <div className="text-sm text-accent-red py-4 text-center">{t.common.error}</div>}
-        <Table columns={eventColumns} data={events ?? []} keyField="id" />
+      <Card title={t.security.events} testId="security-events-card">
+        {eventsError && <div data-testid="security-events-error" className="text-sm text-accent-red py-4 text-center">{t.common.error}</div>}
+        <Table testId="security-events-table" columns={eventColumns} data={events ?? []} keyField="id" />
       </Card>
 
       {/* - Блокировка IP вручную */}
-      <Card title={t.security.blockIp}>
+      <Card title={t.security.blockIp} testId="security-block-card">
         <div className="flex gap-3 items-end">
           <div>
             <label className="text-xs text-text-secondary block mb-1">{t.security.ipAddress}</label>
             <input
+              data-testid="security-block-ip"
               value={blockIp}
               onChange={(evt) => setBlockIp(evt.target.value)}
               placeholder="192.168.1.1"
@@ -101,6 +103,7 @@ export function Security() {
           <div>
             <label className="text-xs text-text-secondary block mb-1">{t.security.reason}</label>
             <input
+              data-testid="security-block-reason"
               value={blockReason}
               onChange={(evt) => setBlockReason(evt.target.value)}
               placeholder={t.security.manualBlock}
@@ -108,6 +111,7 @@ export function Security() {
             />
           </div>
           <button
+            data-testid="security-block-submit"
             onClick={handleBlock}
             className="bg-accent-red/20 text-accent-red hover:bg-accent-red/30 px-4 py-1.5 rounded text-sm transition-colors"
           >
@@ -117,9 +121,9 @@ export function Security() {
       </Card>
 
       {/* - Таблица заблокированных IP */}
-      <Card title={t.security.blockedIps}>
-        {blockedError && <div className="text-sm text-accent-red py-4 text-center">{t.common.error}</div>}
-        <Table columns={blockedColumns} data={blocked ?? []} keyField="id" />
+      <Card title={t.security.blockedIps} testId="security-blocked-card">
+        {blockedError && <div data-testid="security-blocked-error" className="text-sm text-accent-red py-4 text-center">{t.common.error}</div>}
+        <Table testId="security-blocked-table" columns={blockedColumns} data={blocked ?? []} keyField="id" />
       </Card>
     </div>
   );

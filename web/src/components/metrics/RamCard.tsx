@@ -10,9 +10,9 @@ export function RamCard({ used, total }: Props) {
   const usedGB = (used / 1024 / 1024 / 1024).toFixed(1);
   const totalGB = (total / 1024 / 1024 / 1024).toFixed(1);
   return (
-    <Card title={t.dashboard.ram}>
-      <div className="text-2xl font-bold" style={{ color }}>{percent.toFixed(1)}%</div>
-      <div className="text-xs text-text-secondary mt-1">{usedGB} / {totalGB} ГБ</div>
+    <Card title={t.dashboard.ram} testId="metric-ram-card">
+      <div data-testid="metric-ram-value" className="text-2xl font-bold" style={{ color }}>{percent.toFixed(1)}%</div>
+      <div data-testid="metric-ram-bytes" className="text-xs text-text-secondary mt-1">{usedGB} / {totalGB} ГБ</div>
       <div className="mt-2 h-1.5 rounded-full bg-border/50" role="progressbar" aria-valuenow={percent} aria-valuemax={100}>
         <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(percent, 100)}%`, background: `linear-gradient(90deg, ${color}, ${color}cc)` }} />
       </div>

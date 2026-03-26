@@ -20,9 +20,9 @@ export function Dashboard() {
   const { data: events, isError: eventsError } = useQuery({ queryKey: ['securityEvents', undefined], queryFn: () => api.securityEvents(), refetchInterval: 10000 });
 
   return (
-    <div className="space-y-6">
+    <div data-testid="page-dashboard" className="space-y-6">
       {/* - Карточки текущих метрик */}
-      {metricsError && <div className="text-sm text-accent-red py-2 text-center">{t.common.error}</div>}
+      {metricsError && <div data-testid="dashboard-metrics-error" className="text-sm text-accent-red py-2 text-center">{t.common.error}</div>}
       <div className="grid grid-cols-4 gap-4">
         <CpuCard value={metrics?.cpu_total ?? 0} />
         <RamCard used={metrics?.ram_used ?? 0} total={metrics?.ram_total ?? 1} />
@@ -31,21 +31,21 @@ export function Dashboard() {
       </div>
 
       {/* - Графики истории метрик */}
-      {historyError && <div className="text-sm text-accent-red py-2 text-center">{t.common.error}</div>}
+      {historyError && <div data-testid="dashboard-history-error" className="text-sm text-accent-red py-2 text-center">{t.common.error}</div>}
       <div className="grid grid-cols-2 gap-4">
-        <Card>
+        <Card testId="dashboard-cpu-history-card">
           <MetricChart data={history ?? []} dataKey="cpu_total" color="#38bdf8" label={t.dashboard.cpuHistory} />
         </Card>
-        <Card>
+        <Card testId="dashboard-ram-history-card">
           <MetricChart data={history ?? []} dataKey="ram_used" color="#a78bfa" label={t.dashboard.ramHistory} />
         </Card>
       </div>
 
       {/* - Сервисы и последние события */}
       <div className="grid grid-cols-2 gap-4">
-        <Card title={t.dashboard.services}>
-          {servicesError && <div className="text-sm text-accent-red py-2 text-center">{t.common.error}</div>}
-          <div className="space-y-2">
+        <Card title={t.dashboard.services} testId="dashboard-services-card">
+          {servicesError && <div data-testid="dashboard-services-error" className="text-sm text-accent-red py-2 text-center">{t.common.error}</div>}
+          <div data-testid="dashboard-services-list" className="space-y-2">
             {(services ?? []).slice(0, 8).map((svc) => (
               <div key={svc.name} className="flex justify-between items-center text-sm">
                 <span>{svc.name}</span>
@@ -57,9 +57,9 @@ export function Dashboard() {
             )}
           </div>
         </Card>
-        <Card title={t.dashboard.recentEvents}>
-          {eventsError && <div className="text-sm text-accent-red py-2 text-center">{t.common.error}</div>}
-          <div className="space-y-2">
+        <Card title={t.dashboard.recentEvents} testId="dashboard-events-card">
+          {eventsError && <div data-testid="dashboard-events-error" className="text-sm text-accent-red py-2 text-center">{t.common.error}</div>}
+          <div data-testid="dashboard-events-list" className="space-y-2">
             {(events ?? []).slice(0, 5).map((evt) => (
               <div key={evt.id} className="flex justify-between items-center text-sm">
                 <div className="flex items-center gap-2">

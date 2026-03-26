@@ -12,15 +12,15 @@ function formatBytes(bytes: number): string {
 
 export function NetworkCard({ rx, tx }: Props) {
   return (
-    <Card title={t.dashboard.network}>
+    <Card title={t.dashboard.network} testId="metric-network-card">
       <div className="flex gap-4">
         <div>
           <div className="text-xs text-text-secondary">RX</div>
-          <div className="text-lg font-bold text-accent-green">{formatBytes(rx)}</div>
+          <div data-testid="metric-network-rx" className="text-lg font-bold text-accent-green">{formatBytes(rx)}</div>
         </div>
         <div>
           <div className="text-xs text-text-secondary">TX</div>
-          <div className="text-lg font-bold text-accent-blue">{formatBytes(tx)}</div>
+          <div data-testid="metric-network-tx" className="text-lg font-bold text-accent-blue">{formatBytes(tx)}</div>
         </div>
       </div>
     </Card>

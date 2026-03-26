@@ -11,13 +11,13 @@ export function Settings() {
   const { theme, toggleTheme } = useStore();
 
   return (
-    <div className="space-y-6">
+    <div data-testid="page-settings" className="space-y-6">
       <h1 className="text-xl font-bold">{t.settings.title}</h1>
 
       {/* - Статус системы */}
-      <Card title={t.settings.systemStatus}>
-        {healthError && <div className="text-sm text-accent-red py-2 text-center">{t.common.error}</div>}
-        <div className="space-y-3">
+      <Card title={t.settings.systemStatus} testId="settings-system-card">
+        {healthError && <div data-testid="settings-health-error" className="text-sm text-accent-red py-2 text-center">{t.common.error}</div>}
+        <div data-testid="settings-system-status" className="space-y-3">
           <div className="flex justify-between items-center text-sm">
             <span>{t.settings.apiServer}</span>
             <Badge variant="status" value={health?.status === 'ok' ? 'running' : 'failed'} />
@@ -34,10 +34,11 @@ export function Settings() {
       </Card>
 
       {/* - Внешний вид */}
-      <Card title={t.settings.appearance}>
+      <Card title={t.settings.appearance} testId="settings-appearance-card">
         <div className="flex items-center justify-between text-sm">
           <span>{t.settings.theme}</span>
           <button
+            data-testid="settings-theme-toggle"
             onClick={toggleTheme}
             className="bg-bg-primary border border-border rounded px-4 py-1.5 text-sm text-text-primary hover:bg-bg-card-hover transition-colors"
           >
@@ -47,7 +48,7 @@ export function Settings() {
       </Card>
 
       {/* - ML-модуль */}
-      <Card title={t.settings.mlModule}>
+      <Card title={t.settings.mlModule} testId="settings-ml-card">
         <div className="space-y-3">
           <div className="flex justify-between items-center text-sm">
             <span>{t.settings.anomalyDetector}</span>
@@ -64,7 +65,7 @@ export function Settings() {
       </Card>
 
       {/* - Информация */}
-      <Card title={t.settings.about}>
+      <Card title={t.settings.about} testId="settings-about-card">
         <div className="space-y-1 text-sm text-text-secondary">
           <div>{t.settings.version}</div>
           <div>{t.settings.subtitle}</div>

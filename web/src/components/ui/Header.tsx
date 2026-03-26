@@ -12,10 +12,10 @@ export function Header() {
   const isLiveConnected = liveStatus === 'connected';
 
   return (
-    <header className="h-14 border-b border-border flex items-center justify-between px-6 bg-bg-card">
+    <header data-testid="app-header" className="h-14 border-b border-border flex items-center justify-between px-6 bg-bg-card">
       <div />
       <div className="flex items-center gap-4">
-        <div className={`flex items-center gap-2 text-xs ${
+        <div data-testid="header-agent-status" className={`flex items-center gap-2 text-xs ${
           isAgentConnected ? 'text-accent-green' : 'text-accent-red'
         }`}>
           <span className={`w-2 h-2 rounded-full ${
@@ -23,7 +23,7 @@ export function Header() {
           }`} />
           {isAgentConnected ? t.header.agentConnected : t.header.agentDisconnected}
         </div>
-        <div className={`flex items-center gap-2 text-xs ${
+        <div data-testid="header-live-status" className={`flex items-center gap-2 text-xs ${
           isLiveConnected ? 'text-accent-green' : 'text-accent-red'
         }`}>
           <span className={`w-2 h-2 rounded-full ${
@@ -32,6 +32,7 @@ export function Header() {
           {isLiveConnected ? t.header.liveConnected : t.header.liveDisconnected}
         </div>
         <button
+          data-testid="theme-toggle"
           onClick={toggleTheme}
           className="text-text-secondary hover:text-text-primary text-lg transition-colors"
           title={theme === 'dark' ? t.settings.switchToLight : t.settings.switchToDark}

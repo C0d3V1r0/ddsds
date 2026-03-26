@@ -25,6 +25,7 @@ nullius-ctl v${VERSION} — управление Nullius Security Platform
 
 Команды:
   status          Статус всех компонентов
+  smoke           Быстрая smoke-проверка MVP
   logs [--follow] Просмотр логов (agent + API)
   config          Редактировать конфиг в \$EDITOR
   set-password    Сменить пароль дашборда
@@ -34,6 +35,15 @@ nullius-ctl v${VERSION} — управление Nullius Security Platform
   uninstall       Полное удаление Nullius
 
 EOF
+}
+
+pass() {
+    echo "[PASS] $1"
+}
+
+fail_check() {
+    echo "[FAIL] $1" >&2
+    return 1
 }
 
 # ============================================================
@@ -174,12 +184,164 @@ cmd_set_password() {
     fi
 
     htpasswd -cb "$htpasswd_file" admin "$new_pass"
-    chmod 600 "$htpasswd_file"
-    chown nullius:nullius "$htpasswd_file"
+    chmod 640 "$htpasswd_file"
+    chown root:www-data "$htpasswd_file"
 
     echo "Пароль обновлён. Перезагрузка nginx..."
     systemctl reload nginx
     echo "Готово."
+}
+
+# ============================================================
+# - smoke: быстрая end-to-end проверка MVP
+# ============================================================
+
+cmd_smoke() {
+    local health_json
+    local metrics_json
+    local services_json
+    local processes_json
+    local logs_json
+    local events_json
+    local blocked_json
+    local password=""
+    local web_status=""
+    local tmp_body=""
+
+    echo "=== Nullius Smoke Test ==="
+
+    for svc in nullius-api nullius-agent nginx; do
+        if systemctl is-active --quiet "$svc" 2>/dev/null; then
+            pass "Сервис $svc активен"
+        else
+            fail_check "Сервис $svc не активен" || return 1
+        fi
+    done
+
+    health_json="$(curl -fsS --max-time 5 http://127.0.0.1:8000/api/health)" || {
+        fail_check "API health endpoint недоступен"
+        return 1
+    }
+    HEALTH_JSON="$health_json" python3 - <<'PY' || return 1
+import json, os, sys
+data = json.loads(os.environ["HEALTH_JSON"])
+if data.get("status") != "ok":
+    print("[FAIL] API status != ok", file=sys.stderr)
+    raise SystemExit(1)
+if data.get("db") != "ok":
+    print("[FAIL] DB status != ok", file=sys.stderr)
+    raise SystemExit(1)
+if data.get("agent") != "connected":
+    print("[FAIL] Agent status != connected", file=sys.stderr)
+    raise SystemExit(1)
+print("[PASS] API health/status корректны")
+PY
+
+    metrics_json="$(curl -fsS --max-time 5 http://127.0.0.1:8000/api/metrics)" || {
+        fail_check "Эндпоинт /api/metrics недоступен"
+        return 1
+    }
+    METRICS_JSON="$metrics_json" python3 - <<'PY' || return 1
+import json, os, sys
+data = json.loads(os.environ["METRICS_JSON"])
+if not isinstance(data, dict):
+    print("[FAIL] /api/metrics вернул не object", file=sys.stderr)
+    raise SystemExit(1)
+for key in ("cpu_total", "ram_used", "ram_total", "network_rx", "network_tx"):
+    if key not in data:
+        print(f"[FAIL] /api/metrics missing key: {key}", file=sys.stderr)
+        raise SystemExit(1)
+print("[PASS] Текущие метрики доступны")
+PY
+
+    services_json="$(curl -fsS --max-time 5 http://127.0.0.1:8000/api/services)" || {
+        fail_check "Эндпоинт /api/services недоступен"
+        return 1
+    }
+    SERVICES_JSON="$services_json" python3 - <<'PY' || return 1
+import json, os, sys
+data = json.loads(os.environ["SERVICES_JSON"])
+if not isinstance(data, list):
+    print("[FAIL] /api/services вернул не list", file=sys.stderr)
+    raise SystemExit(1)
+print(f"[PASS] Сервисы доступны: {len(data)} шт.")
+PY
+
+    processes_json="$(curl -fsS --max-time 5 http://127.0.0.1:8000/api/processes)" || {
+        fail_check "Эндпоинт /api/processes недоступен"
+        return 1
+    }
+    PROCESSES_JSON="$processes_json" python3 - <<'PY' || return 1
+import json, os, sys
+data = json.loads(os.environ["PROCESSES_JSON"])
+if not isinstance(data, list):
+    print("[FAIL] /api/processes вернул не list", file=sys.stderr)
+    raise SystemExit(1)
+print(f"[PASS] Процессы доступны: {len(data)} шт.")
+PY
+
+    logs_json="$(curl -fsS --max-time 5 'http://127.0.0.1:8000/api/logs?limit=5')" || {
+        fail_check "Эндпоинт /api/logs недоступен"
+        return 1
+    }
+    LOGS_JSON="$logs_json" python3 - <<'PY' || return 1
+import json, os, sys
+data = json.loads(os.environ["LOGS_JSON"])
+if not isinstance(data, list):
+    print("[FAIL] /api/logs вернул не list", file=sys.stderr)
+    raise SystemExit(1)
+print(f"[PASS] Логи доступны: {len(data)} записей в выборке")
+PY
+
+    events_json="$(curl -fsS --max-time 5 'http://127.0.0.1:8000/api/security/events?limit=5')" || {
+        fail_check "Эндпоинт /api/security/events недоступен"
+        return 1
+    }
+    EVENTS_JSON="$events_json" python3 - <<'PY' || return 1
+import json, os, sys
+data = json.loads(os.environ["EVENTS_JSON"])
+if not isinstance(data, list):
+    print("[FAIL] /api/security/events вернул не list", file=sys.stderr)
+    raise SystemExit(1)
+print(f"[PASS] Security events доступны: {len(data)} записей в выборке")
+PY
+
+    blocked_json="$(curl -fsS --max-time 5 'http://127.0.0.1:8000/api/security/blocked')" || {
+        fail_check "Эндпоинт /api/security/blocked недоступен"
+        return 1
+    }
+    BLOCKED_JSON="$blocked_json" python3 - <<'PY' || return 1
+import json, os, sys
+data = json.loads(os.environ["BLOCKED_JSON"])
+if not isinstance(data, list):
+    print("[FAIL] /api/security/blocked вернул не list", file=sys.stderr)
+    raise SystemExit(1)
+print(f"[PASS] Blocked IP list доступен: {len(data)} записей")
+PY
+
+    if [[ -f "$INSTALL_DIR/config/.initial_password" ]]; then
+        password="$(tr -d '\n' < "$INSTALL_DIR/config/.initial_password")"
+    fi
+    if [[ -n "$password" ]]; then
+        tmp_body="/tmp/nullius-smoke-body.$$"
+        web_status="$(curl -k -sS -o "$tmp_body" -w '%{http_code}' -u "admin:$password" https://127.0.0.1/)" || {
+            rm -f "$tmp_body"
+            fail_check "HTTPS dashboard недоступен"
+            return 1
+        }
+        if [[ "$web_status" == "200" ]] && grep -q "NULLIUS" "$tmp_body"; then
+            pass "Dashboard HTML доступен по HTTPS"
+        else
+            rm -f "$tmp_body"
+            fail_check "Dashboard HTML недоступен или некорректен (HTTP $web_status)"
+            return 1
+        fi
+        rm -f "$tmp_body"
+    else
+        echo "[WARN] .initial_password не найден, HTTPS dashboard check пропущен"
+    fi
+
+    echo "=== Smoke test passed ==="
 }
 
 # ============================================================
@@ -316,6 +478,7 @@ shift || true
 
 case "$COMMAND" in
     status)       cmd_status ;;
+    smoke)        cmd_smoke ;;
     logs)         cmd_logs "$@" ;;
     config)       cmd_config ;;
     set-password) cmd_set_password ;;

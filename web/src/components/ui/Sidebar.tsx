@@ -12,8 +12,8 @@ const navItems = [
 
 export function Sidebar() {
   return (
-    <aside className="w-56 h-screen bg-bg-card border-r border-border flex flex-col py-6 px-3 fixed left-0 top-0">
-      <div className="text-xl font-bold tracking-widest text-text-primary px-3 mb-8">
+    <aside data-testid="app-sidebar" className="w-56 h-screen bg-bg-card border-r border-border flex flex-col py-6 px-3 fixed left-0 top-0">
+      <div data-testid="app-brand" className="text-xl font-bold tracking-widest text-text-primary px-3 mb-8">
         NULLIUS
       </div>
       <nav className="flex flex-col gap-1">
@@ -22,6 +22,7 @@ export function Sidebar() {
             key={item.path}
             to={item.path}
             end={item.path === '/'}
+            data-testid={`nav-${item.path === '/' ? 'dashboard' : item.path.slice(1)}`}
             className={({ isActive }) =>
               `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
                 isActive

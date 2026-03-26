@@ -15,8 +15,8 @@ export function DiskCard({ disk }: Props) {
   }
   const color = percent > 80 ? 'var(--color-accent-red)' : percent > 60 ? 'var(--color-accent-yellow)' : 'var(--color-accent-blue)';
   return (
-    <Card title={t.dashboard.disk}>
-      <div className="text-2xl font-bold" style={{ color }}>{percent.toFixed(1)}%</div>
+    <Card title={t.dashboard.disk} testId="metric-disk-card">
+      <div data-testid="metric-disk-value" className="text-2xl font-bold" style={{ color }}>{percent.toFixed(1)}%</div>
       <div className="mt-2 h-1.5 rounded-full bg-border/50" role="progressbar" aria-valuenow={percent} aria-valuemax={100}>
         <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(percent, 100)}%`, background: `linear-gradient(90deg, ${color}, ${color}cc)` }} />
       </div>

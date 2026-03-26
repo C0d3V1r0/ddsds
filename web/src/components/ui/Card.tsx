@@ -6,11 +6,12 @@ interface CardProps {
   children: ReactNode;
   className?: string;
   gradient?: boolean;
+  testId?: string;
 }
 
-export function Card({ title, children, className = '', gradient = true }: CardProps) {
+export function Card({ title, children, className = '', gradient = true, testId }: CardProps) {
   return (
-    <div className={`rounded-lg border border-border p-4 ${
+    <div data-testid={testId} className={`rounded-lg border border-border p-4 ${
       gradient
         ? 'bg-gradient-to-br from-bg-card to-bg-card-hover'
         : 'bg-bg-card'

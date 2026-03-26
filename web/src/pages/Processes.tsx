@@ -55,10 +55,11 @@ export function Processes() {
   const ramColor = (v: number) => v > 500 ? 'text-accent-red' : v > 200 ? 'text-accent-yellow' : 'text-text-primary';
 
   return (
-    <div className="space-y-6">
+    <div data-testid="page-processes" className="space-y-6">
       <div className="flex items-center gap-4">
         <h1 className="text-xl font-bold">{t.processes.title}</h1>
         <input
+          data-testid="processes-search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder={t.processes.searchPlaceholder}
@@ -67,10 +68,10 @@ export function Processes() {
         <span className="text-xs text-text-secondary">{t.processes.processCount(sorted.length)}</span>
       </div>
 
-      {processesError && <div className="text-sm text-accent-red py-2 text-center">{t.common.error}</div>}
-      <Card gradient={false}>
+      {processesError && <div data-testid="processes-error" className="text-sm text-accent-red py-2 text-center">{t.common.error}</div>}
+      <Card gradient={false} testId="processes-card">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table data-testid="processes-table" className="w-full text-sm">
             <thead>
               <tr className="border-b border-border">
                 <SortHeader label={t.processes.pid} field="pid" />

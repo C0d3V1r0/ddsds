@@ -26,10 +26,11 @@ export function Logs() {
     : (logs ?? []);
 
   return (
-    <div className="space-y-4">
+    <div data-testid="page-logs" className="space-y-4">
       <div className="flex items-center gap-4">
         <h1 className="text-xl font-bold">{t.logs.title}</h1>
         <select
+          data-testid="logs-source-filter"
           value={source}
           onChange={(e) => { setSource(e.target.value); clearLive(); }}
           className="bg-bg-card border border-border rounded px-3 py-1.5 text-sm text-text-primary"
@@ -40,6 +41,7 @@ export function Logs() {
           ))}
         </select>
         <input
+          data-testid="logs-search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder={t.logs.searchPlaceholder}
@@ -47,6 +49,7 @@ export function Logs() {
         />
         <label className="flex items-center gap-2 text-xs text-text-secondary cursor-pointer">
           <input
+            data-testid="logs-autoscroll"
             type="checkbox"
             checked={autoScroll}
             onChange={(e) => setAutoScroll(e.target.checked)}
@@ -57,12 +60,13 @@ export function Logs() {
         <span className="text-xs text-text-secondary">{t.logs.lineCount(filtered.length)}</span>
       </div>
 
-      {logsError && <div className="text-sm text-accent-red py-2 text-center">{t.common.error}</div>}
-      <Card gradient={false} className="h-[calc(100vh-200px)] overflow-y-auto font-mono text-xs">
+      {logsError && <div data-testid="logs-error" className="text-sm text-accent-red py-2 text-center">{t.common.error}</div>}
+      <Card gradient={false} testId="logs-card" className="h-[calc(100vh-200px)] overflow-y-auto font-mono text-xs">
         {filtered.map((log, i) => {
           const isSuspicious = SUSPICIOUS_PATTERNS.test(log.line);
           return (
             <div
+              data-testid="log-entry"
               key={`${log.timestamp}-${i}`}
               className={`py-0.5 px-2 flex gap-3 ${isSuspicious ? 'bg-accent-red/10 text-accent-red' : 'hover:bg-bg-card-hover'}`}
             >
@@ -75,7 +79,7 @@ export function Logs() {
           );
         })}
         {filtered.length === 0 && (
-          <div className="text-text-secondary text-center py-8">{t.logs.noLogs}</div>
+          <div data-testid="logs-empty" className="text-text-secondary text-center py-8">{t.logs.noLogs}</div>
         )}
         <div ref={logsEndRef} />
       </Card>

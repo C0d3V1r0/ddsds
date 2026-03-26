@@ -12,19 +12,20 @@ interface TableProps<T> {
   columns: Column<T>[];
   data: T[];
   keyField: string;
+  testId?: string;
 }
 
-export function Table<T extends object>({ columns, data, keyField }: TableProps<T>) {
+export function Table<T extends object>({ columns, data, keyField, testId }: TableProps<T>) {
   if (data.length === 0) {
     return (
-      <div className="text-sm text-text-secondary text-center py-8">
+      <div data-testid={testId} className="text-sm text-text-secondary text-center py-8">
         {t.table.noData}
       </div>
     );
   }
 
   return (
-    <div className="overflow-x-auto">
+    <div data-testid={testId} className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border">
