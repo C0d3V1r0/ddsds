@@ -123,6 +123,9 @@ if [[ -f "$SCRIPT_DIR/server.tar.gz" ]]; then
         "$INSTALL_DIR/server/venv/bin/pip" install --quiet --upgrade pip
         "$INSTALL_DIR/server/venv/bin/pip" install --quiet -r "$INSTALL_DIR/server/requirements.txt"
     fi
+
+    # - Директория моделей нужна systemd unit для ReadWritePaths
+    mkdir -p "$INSTALL_DIR/server/ml/models"
 else
     echo "  ВНИМАНИЕ: server.tar.gz не найден, пропуск"
 fi
@@ -202,9 +205,12 @@ DASHBOARD_PASS=""
 if [[ ! -f "$INSTALL_DIR/config/.htpasswd" ]]; then
     DASHBOARD_PASS=$(openssl rand -base64 16 | tr -d '=/+' | head -c 16)
     htpasswd -cb "$INSTALL_DIR/config/.htpasswd" admin "$DASHBOARD_PASS"
-    chmod 600 "$INSTALL_DIR/config/.htpasswd"
+    chown root:www-data "$INSTALL_DIR/config/.htpasswd"
+    chmod 640 "$INSTALL_DIR/config/.htpasswd"
     echo "  Создан .htpasswd (user: admin)"
 else
+    chown root:www-data "$INSTALL_DIR/config/.htpasswd"
+    chmod 640 "$INSTALL_DIR/config/.htpasswd"
     echo "  .htpasswd уже существует, пропуск"
 fi
 
@@ -230,6 +236,8 @@ log_step "8/10" "Настройка прав..."
 chown -R nullius:nullius "$INSTALL_DIR"
 # - Агент работает от root (нужен доступ к системным логам)
 chown root:root "$INSTALL_DIR/bin/nullius-agent" 2>/dev/null || true
+chown root:www-data "$INSTALL_DIR/config/.htpasswd" 2>/dev/null || true
+chmod 640 "$INSTALL_DIR/config/.htpasswd" 2>/dev/null || true
 
 # ============================================================
 # - 9. Systemd + nginx
