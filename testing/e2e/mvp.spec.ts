@@ -1,4 +1,4 @@
-import { expect, test } from 'playwright/test';
+import { expect, test } from '@playwright/test';
 
 test.describe('Nullius MVP', () => {
   test('dashboard loads with live data', async ({ page }) => {

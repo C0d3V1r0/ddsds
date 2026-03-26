@@ -1,4 +1,4 @@
-import { defineConfig } from 'playwright/test';
+import { defineConfig } from '@playwright/test';
 import fs from 'node:fs';
 
 const passwordFile = '/opt/nullius/config/.initial_password';
