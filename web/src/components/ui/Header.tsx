@@ -22,10 +22,7 @@ export function Header() {
   }, []);
 
   return (
-    <header data-testid="app-header" className="min-h-14 border-b border-border flex flex-col gap-2 px-4 py-3 bg-bg-card md:h-14 md:flex-row md:items-center md:justify-between md:px-6 md:py-0">
-      <div className="min-w-0">
-        <div className="text-xs uppercase tracking-wider text-text-secondary">{t.header.statusLabel}</div>
-      </div>
+    <header data-testid="app-header" className="min-h-14 border-b border-border flex flex-col gap-2 px-4 py-3 bg-bg-card md:h-14 md:flex-row md:items-center md:justify-end md:px-6 md:py-0">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2" role="status" aria-live="polite" aria-atomic="true">
         {!isAgentConnected && (
           <div data-testid="header-agent-status" className="flex items-center gap-2 text-xs whitespace-nowrap text-accent-red">

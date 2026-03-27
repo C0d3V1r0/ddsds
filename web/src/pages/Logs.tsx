@@ -1,5 +1,5 @@
 // Страница логов: live-стрим с фильтрацией, поиском и подсветкой подозрительных строк
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useLogs } from '../hooks/useLogs';
 import { Card } from '../components/ui/Card';
 import { t } from '../lib/i18n';
@@ -11,9 +11,13 @@ const SUSPICIOUS_PATTERNS = /failed password|invalid user|union select|<script|\
 export function Logs() {
   const [source, setSource] = useState('');
   const [search, setSearch] = useState('');
+  const [fromDateTime, setFromDateTime] = useState('');
+  const [toDateTime, setToDateTime] = useState('');
   const [autoScroll, setAutoScroll] = useState(true);
   const logsEndRef = useRef<HTMLDivElement>(null);
-  const { data: logs, clearLive, isError: logsError } = useLogs(source || undefined);
+  const fromTimestamp = fromDateTime ? Math.floor(new Date(fromDateTime).getTime() / 1000) : null;
+  const toTimestamp = toDateTime ? Math.floor(new Date(toDateTime).getTime() / 1000) : null;
+  const { data: logs, clearLive, isError: logsError } = useLogs(source || undefined, 200, fromTimestamp, toTimestamp);
 
   // Автоскролл при получении новых логов
   useEffect(() => {
@@ -22,13 +26,18 @@ export function Logs() {
     }
   }, [logs?.length, autoScroll]);
 
-  const filtered = search
-    ? (logs ?? []).filter((l) => l.line.toLowerCase().includes(search.toLowerCase()))
-    : (logs ?? []);
+  const filtered = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase();
+
+    return (logs ?? []).filter((log) => {
+      if (normalizedSearch && !log.line.toLowerCase().includes(normalizedSearch)) return false;
+      return true;
+    });
+  }, [logs, search]);
 
   return (
     <div data-testid="page-logs" className="space-y-4">
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-4">
         <h1 className="text-xl font-bold">{t.logs.title}</h1>
         <select
           data-testid="logs-source-filter"
@@ -48,6 +57,41 @@ export function Logs() {
           placeholder={t.logs.searchPlaceholder}
           className="bg-bg-card border border-border rounded px-3 py-1.5 text-sm text-text-primary w-64"
         />
+        <label className="flex items-center gap-2 text-xs text-text-secondary">
+          <span>{t.logs.from}</span>
+          <input
+            data-testid="logs-from-datetime"
+            type="datetime-local"
+            value={fromDateTime}
+            onChange={(e) => setFromDateTime(e.target.value)}
+            aria-label={t.logs.fromPlaceholder}
+            className="bg-bg-card border border-border rounded px-3 py-1.5 text-sm text-text-primary"
+          />
+        </label>
+        <label className="flex items-center gap-2 text-xs text-text-secondary">
+          <span>{t.logs.to}</span>
+          <input
+            data-testid="logs-to-datetime"
+            type="datetime-local"
+            value={toDateTime}
+            onChange={(e) => setToDateTime(e.target.value)}
+            aria-label={t.logs.toPlaceholder}
+            className="bg-bg-card border border-border rounded px-3 py-1.5 text-sm text-text-primary"
+          />
+        </label>
+        {(fromDateTime || toDateTime) && (
+          <button
+            type="button"
+            data-testid="logs-reset-datetime"
+            onClick={() => {
+              setFromDateTime('');
+              setToDateTime('');
+            }}
+            className="text-xs text-text-secondary hover:text-text-primary transition-colors"
+          >
+            {t.logs.resetRange}
+          </button>
+        )}
         <label className="flex items-center gap-2 text-xs text-text-secondary cursor-pointer">
           <input
             data-testid="logs-autoscroll"

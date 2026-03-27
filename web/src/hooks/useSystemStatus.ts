@@ -9,6 +9,7 @@ export function useSystemStatus() {
   const setAgentStatus = useStore((state) => state.setAgentStatus);
 
   const query = useQuery({
+    // health — дешёвый эндпоинт, поэтому именно он синхронизирует глобальный agent status.
     queryKey: ['health'],
     queryFn: api.health,
     refetchInterval: 5000,

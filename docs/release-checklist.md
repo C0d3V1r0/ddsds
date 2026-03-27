@@ -35,6 +35,9 @@ cd dist
 - установка завершается без ручных hotfix
 - пароль администратора сохранён в `/opt/nullius/config/.initial_password`
 - если в конфиге включён `api.require_bearer_auth`, задан отдельный `api.token` или `NULLIUS_API_TOKEN`
+- если включён `api.require_ws_token`, задан отдельный `api.ws_token` / `NULLIUS_WS_TOKEN` или осознанно используется UI API token
+- nginx применяет rate limiting через `conf.d/nullius-limits.conf`
+- `/ws/agent` закрыт allowlist'ом в `snippets/nullius-agent-allowlist.conf`; если нужен внешний агент, туда явно добавлена только доверенная подсеть
 
 ## 4. Runtime health
 
@@ -62,14 +65,21 @@ python3 testing/smoke/mvp_smoke.py
 - `=== Smoke passed ===`
 - `=== MVP suite passed ===`
 
+Если нужен полный destructive acceptance на живом стенде:
+
+```bash
+sudo ./testing/run_release_acceptance.sh --destructive
+```
+
 ## 6. Ручная проверка UI
 
 Проверить:
-- `Обзор`: графики, метрики, статусы
+- `Обзор`: графики и host-метрики читаются без наложения подписей
+- `Система`: статусы API/agent/db, ML-состояния и причины ожидания/обучения показываются корректно
 - `Безопасность`: события, блокировка/разблокировка IP, корректные action labels (`logged`, `review_required`, `auto_block`)
-- `Процессы`: список процессов
-- `Логи`: новые записи появляются
-- `Настройки`: API/agent/db статусы и переключение темы
+- `Процессы`: список процессов, `Завершить` и `Убить` доступны только для обычных процессов
+- `Логи`: новые записи появляются, фильтр по диапазону времени работает
+- `Настройки`: переключение темы и языка
 
 ## 7. Перезагрузка сервера
 

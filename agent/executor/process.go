@@ -38,3 +38,18 @@ func killProcess(ctx context.Context, pid int) (string, error) {
 	}()
 	return "success", nil
 }
+
+// forceKillProcess завершает процесс сразу через SIGKILL.
+func forceKillProcess(pid int) (string, error) {
+	if IsDeniedPID(pid) {
+		return "", fmt.Errorf("PID %d is in deny list", pid)
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return "", fmt.Errorf("процесс %d не найден: %w", pid, err)
+	}
+	if err := proc.Signal(syscall.SIGKILL); err != nil {
+		return "", fmt.Errorf("не удалось отправить SIGKILL процессу %d: %w", pid, err)
+	}
+	return "success", nil
+}

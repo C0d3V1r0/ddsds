@@ -1,4 +1,6 @@
 # Тесты для API логов (in-memory ring buffer)
+import time
+
 import pytest
 from httpx import AsyncClient, ASGITransport
 from ws.agent import _handle_log
@@ -33,3 +35,28 @@ async def test_log_entries_are_truncated_before_buffering(test_app):
     assert len(data[0]["source"]) == 64
     assert len(data[0]["line"]) == 4096
     assert len(data[0]["file"]) == 512
+
+
+@pytest.mark.asyncio
+async def test_get_logs_filters_by_timestamp_range(test_app):
+    now = int(time.time())
+    await _handle_log({
+        "timestamp": now - 30,
+        "data": {"source": "auth", "line": "old-entry", "file": "/var/log/auth.log"},
+    })
+    await _handle_log({
+        "timestamp": now - 20,
+        "data": {"source": "auth", "line": "in-range-entry", "file": "/var/log/auth.log"},
+    })
+    await _handle_log({
+        "timestamp": now - 10,
+        "data": {"source": "auth", "line": "new-entry", "file": "/var/log/auth.log"},
+    })
+
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get(f"/api/logs?source=auth&from_ts={now - 25}&to_ts={now - 15}&limit=10")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert [entry["line"] for entry in data] == ["in-range-entry"]

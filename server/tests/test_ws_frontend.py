@@ -1,7 +1,7 @@
 # Тесты WebSocket-обработчика фронтенда: подключение, auth и ping/pong
 import pytest
 from starlette.testclient import TestClient
-from tests.conftest import TEST_AGENT_SECRET
+from tests.conftest import TEST_WS_TOKEN
 from ws.agent import _handle_log
 
 
@@ -20,7 +20,7 @@ async def test_frontend_ws_connects_with_token_when_enabled(secure_test_app):
     # При включённой WS-auth клиент должен передать корректный токен
     client = TestClient(secure_test_app)
     with client.websocket_connect("/ws/live") as ws:
-        ws.send_json({"token": TEST_AGENT_SECRET})
+        ws.send_json({"token": TEST_WS_TOKEN})
         ws.send_json({"type": "ping"})
         resp = ws.receive_json()
         assert resp["type"] == "pong"

@@ -212,6 +212,8 @@ ml:
 api:
   require_bearer_auth: false
   require_ws_token: false
+  token: ""
+  ws_token: ""
 YAML
     echo "  Создан nullius.yaml"
 else
@@ -270,6 +272,13 @@ systemctl daemon-reload
 
 # Nginx
 cp "$SCRIPT_DIR/nginx-nullius.conf" /etc/nginx/sites-available/nullius
+if [[ -f "$SCRIPT_DIR/nginx-nullius-limits.conf" ]]; then
+    cp "$SCRIPT_DIR/nginx-nullius-limits.conf" /etc/nginx/conf.d/nullius-limits.conf
+fi
+mkdir -p /etc/nginx/snippets
+if [[ -f "$SCRIPT_DIR/nginx-agent-allowlist.conf" ]]; then
+    cp "$SCRIPT_DIR/nginx-agent-allowlist.conf" /etc/nginx/snippets/nullius-agent-allowlist.conf
+fi
 ln -sf /etc/nginx/sites-available/nullius /etc/nginx/sites-enabled/nullius
 
 # Удаление default-конфига nginx если мешает

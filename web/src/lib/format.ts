@@ -35,6 +35,13 @@ export function formatChartTime(timestamp: number) {
   });
 }
 
+export function formatChartAxisTime(timestamp: number) {
+  return new Date(timestamp * 1000).toLocaleTimeString(getLocaleTag(), {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 export function formatDateTime(timestamp: number) {
   return new Date(timestamp * 1000).toLocaleString(getLocaleTag());
 }
@@ -82,8 +89,14 @@ export function formatEventDescription(description: string, type?: string) {
   if (description.startsWith('ML-detected: ')) {
     const label = description.replace('ML-detected: ', '');
     return locale === 'ru'
-      ? `ML обнаружил: ${formatEventType(label)}`
-      : `ML detected: ${formatEventType(label)}`;
+      ? `${t.system.attackClassifier}: ${formatEventType(label)}`
+      : `${t.system.attackClassifier}: ${formatEventType(label)}`;
+  }
+
+  if (description.startsWith('ML anomaly detected')) {
+    return locale === 'ru'
+      ? `${t.system.anomalyDetector}: обнаружена аномалия в метриках`
+      : `${t.system.anomalyDetector}: anomaly detected in metrics`;
   }
 
   if (description.endsWith('pattern detected') && type) {

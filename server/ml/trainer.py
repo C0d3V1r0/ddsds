@@ -22,6 +22,38 @@ MIN_TRAINING_SAMPLES = 100
 # Максимум security-событий в окне обучения (защита от poisoned baseline)
 MAX_EVENTS_CLEAN_BASELINE = 10
 
+_anomaly_status: dict[str, object] = {
+    "status": "pending",
+    "reason_code": "waiting_for_first_run",
+    "samples_count": 0,
+    "required_samples": MIN_TRAINING_SAMPLES,
+    "event_count": 0,
+    "max_event_count": MAX_EVENTS_CLEAN_BASELINE,
+    "updated_at": 0,
+    "next_run_at": None,
+}
+
+
+def _set_anomaly_status(
+    status: str,
+    reason_code: str,
+    *,
+    samples_count: int = 0,
+    event_count: int = 0,
+    next_run_at: int | None = None,
+) -> None:
+    global _anomaly_status
+    _anomaly_status = {
+        "status": status,
+        "reason_code": reason_code,
+        "samples_count": samples_count,
+        "required_samples": MIN_TRAINING_SAMPLES,
+        "event_count": event_count,
+        "max_event_count": MAX_EVENTS_CLEAN_BASELINE,
+        "updated_at": int(time.time()),
+        "next_run_at": next_run_at,
+    }
+
 
 def get_anomaly_detector() -> AnomalyDetector:
     return _anomaly_detector
@@ -29,6 +61,10 @@ def get_anomaly_detector() -> AnomalyDetector:
 
 def get_classifier() -> AttackClassifier:
     return _attack_classifier
+
+
+def get_anomaly_status() -> dict[str, object]:
+    return dict(_anomaly_status)
 
 
 async def init_models(db_path: str) -> None:
@@ -40,9 +76,13 @@ async def init_models(db_path: str) -> None:
     if anomaly_path.exists():
         try:
             _anomaly_detector.load(str(anomaly_path))
+            _set_anomaly_status("running", "ready")
             _logger.info("Anomaly detector загружен с диска")
         except Exception as exc:
+            _set_anomaly_status("failed", "model_load_failed")
             _logger.warning(f"Ошибка загрузки anomaly detector: {exc}")
+    else:
+        _set_anomaly_status("pending", "waiting_for_first_run")
 
     # Пробуем загрузить classifier с диска, или обучаем на базовом датасете
     classifier_path = MODELS_DIR / "classifier.joblib"
@@ -67,6 +107,7 @@ async def init_models(db_path: str) -> None:
 
 async def train_anomaly_from_db(db_path: str, hours: int = 24) -> bool:
     """Обучает anomaly detector на метриках из БД за последние N часов"""
+    _set_anomaly_status("training", "training_in_progress")
     cutoff = int(time.time()) - hours * 3600
 
     async with aiosqlite.connect(db_path) as conn:
@@ -78,6 +119,11 @@ async def train_anomaly_from_db(db_path: str, hours: int = 24) -> bool:
         rows = await cursor.fetchall()
 
     if len(rows) < MIN_TRAINING_SAMPLES:
+        _set_anomaly_status(
+            "insufficient_data",
+            "insufficient_data",
+            samples_count=len(rows),
+        )
         _logger.info(f"Недостаточно метрик для обучения: {len(rows)} (нужно минимум {MIN_TRAINING_SAMPLES})")
         return False
 
@@ -91,11 +137,23 @@ async def train_anomaly_from_db(db_path: str, hours: int = 24) -> bool:
         event_count = row[0] if row else 0
 
     if event_count > MAX_EVENTS_CLEAN_BASELINE:
+        _set_anomaly_status(
+            "postponed",
+            "poisoned_baseline",
+            samples_count=len(rows),
+            event_count=event_count,
+        )
         _logger.warning(f"Poisoned baseline: {event_count} security-событий в окне обучения, пропускаем")
         return False
 
     data = [extract_metrics_features(dict(row)) for row in rows]
     _anomaly_detector.train(data)
+    _set_anomaly_status(
+        "running",
+        "ready",
+        samples_count=len(rows),
+        event_count=event_count,
+    )
 
     anomaly_path = MODELS_DIR / "anomaly.joblib"
     _anomaly_detector.save(str(anomaly_path))

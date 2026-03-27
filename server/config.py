@@ -50,6 +50,7 @@ class APIConfig(BaseModel):
     require_bearer_auth: bool = False
     require_ws_token: bool = False
     token: str = ""
+    ws_token: str = ""
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
 
 

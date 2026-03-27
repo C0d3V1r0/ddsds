@@ -24,6 +24,11 @@ test.describe('Nullius MVP', () => {
     await expect(page.getByTestId('security-events-card')).toBeVisible();
     await expect(page.getByTestId('security-blocked-card')).toBeVisible();
 
+    await page.getByTestId('nav-system').click();
+    await expect(page.getByTestId('page-system')).toBeVisible();
+    await expect(page.getByTestId('system-status-list')).toBeVisible();
+    await expect(page.getByTestId('system-health-error')).toHaveCount(0);
+
     await page.getByTestId('nav-processes').click();
     await expect(page.getByTestId('page-processes')).toBeVisible();
     await expect(page.getByTestId('processes-table')).toBeVisible();
@@ -36,10 +41,8 @@ test.describe('Nullius MVP', () => {
 
     await page.getByTestId('nav-settings').click();
     await expect(page.getByTestId('page-settings')).toBeVisible();
-    await expect(page.getByTestId('settings-system-status')).toContainText('API Сервер');
-    await expect(page.getByTestId('settings-system-status')).toContainText('Агент');
-    await expect(page.getByTestId('settings-system-status')).toContainText('База данных');
-    await expect(page.getByTestId('settings-health-error')).toHaveCount(0);
+    await expect(page.getByTestId('settings-appearance-card')).toBeVisible();
+    await expect(page.getByTestId('settings-theme-toggle')).toBeVisible();
   });
 
   test('security UI can block and unblock an IP', async ({ page }) => {

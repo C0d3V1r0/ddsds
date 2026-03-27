@@ -13,6 +13,9 @@ const statusColors: Record<string, string> = {
   stopped: 'bg-gray-500/15 text-gray-400',
   failed: 'bg-red-500/15 text-red-400',
   pending: 'bg-yellow-500/15 text-yellow-300',
+  training: 'bg-blue-500/15 text-blue-300',
+  insufficient_data: 'bg-yellow-500/15 text-yellow-300',
+  postponed: 'bg-orange-500/15 text-orange-300',
 };
 
 const FALLBACK_COLOR = 'bg-gray-500/15 text-gray-400';
@@ -30,6 +33,9 @@ export function Badge({ variant, value }: BadgeProps) {
     stopped: t.status.stopped,
     failed: t.status.failed,
     pending: t.status.pending,
+    training: t.status.training,
+    insufficient_data: t.status.insufficientData,
+    postponed: t.status.postponed,
   };
   const severityLabels: Record<string, string> = {
     low: t.severity.low,

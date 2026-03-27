@@ -1,20 +1,10 @@
-// Страница настроек: статус системы, внешний вид, ML-модуль
-import { useQuery } from '@tanstack/react-query';
-import { api } from '../lib/api';
+// Страница настроек: только реальные пользовательские настройки интерфейса
 import { Card } from '../components/ui/Card';
-import { Badge } from '../components/ui/Badge';
-import { ErrorBlock, LoadingBlock, StateBlock } from '../components/ui/StateBlock';
 import { useStore } from '../stores/store';
 import { t } from '../lib/i18n';
 
 export function Settings() {
-  const { data: health, isError: healthError, isLoading: healthLoading } = useQuery({ queryKey: ['health'], queryFn: api.health, refetchInterval: 5000 });
-  const { data: mlStatus, isError: mlError, isLoading: mlLoading } = useQuery({ queryKey: ['mlStatus'], queryFn: api.mlStatus, refetchInterval: 10000 });
-  const { theme, toggleTheme, locale } = useStore();
-
-  // Определяем статус ML-компонентов по ответу API
-  const anomalyStatus = mlStatus?.anomaly_detector?.ready ? 'running' : 'pending';
-  const classifierStatus = mlStatus?.attack_classifier?.ready ? 'running' : 'pending';
+  const { theme, toggleTheme, locale, setLocale } = useStore();
 
   return (
     <div data-testid="page-settings" className="space-y-6">
@@ -23,116 +13,47 @@ export function Settings() {
         <p className="text-sm text-text-secondary">{t.settings.summary}</p>
       </div>
 
-      {/* Статус системы */}
-      <Card title={t.settings.systemStatus} testId="settings-system-card">
-        <p className="mb-4 text-sm text-text-secondary">{t.settings.systemStatusHint}</p>
-        {healthLoading ? (
-          <LoadingBlock testId="settings-health-loading" />
-        ) : healthError ? (
-          <ErrorBlock testId="settings-health-error" />
-        ) : (
-          <div data-testid="settings-system-status" className="space-y-3">
-            <div className="flex justify-between items-center text-sm">
-              <span>{t.settings.apiServer}</span>
-              <Badge variant="status" value={health?.status === 'ok' ? 'running' : 'failed'} />
-            </div>
-            <div className="flex justify-between items-center text-sm">
-              <span>{t.settings.agent}</span>
-              <Badge variant="status" value={health?.agent === 'connected' ? 'running' : 'stopped'} />
-            </div>
-            <div className="flex justify-between items-center text-sm">
-              <span>{t.settings.database}</span>
-              <Badge variant="status" value={health?.db === 'ok' ? 'running' : 'failed'} />
-            </div>
-          </div>
-        )}
-      </Card>
-
-      {/* Внешний вид */}
       <Card title={t.settings.appearance} testId="settings-appearance-card">
         <p className="mb-4 text-sm text-text-secondary">{t.settings.appearanceHint}</p>
-        <div className="flex items-center justify-between text-sm">
-          <span>{t.settings.theme}</span>
-          <button
-            data-testid="settings-theme-toggle"
-            onClick={toggleTheme}
-            className="bg-bg-primary border border-border rounded px-4 py-1.5 text-sm text-text-primary hover:bg-bg-card-hover transition-colors"
-          >
-            {theme === 'dark' ? t.settings.switchToLight : t.settings.switchToDark}
-          </button>
-        </div>
-      </Card>
-
-      {/* ML-модуль: реальный статус с бэкенда */}
-      <Card title={t.settings.mlModule} testId="settings-ml-card">
-        {mlLoading ? (
-          <LoadingBlock testId="settings-ml-loading" />
-        ) : mlError ? (
-          <div className="space-y-3">
-            <div className="flex justify-between items-center text-sm">
-              <span>{t.settings.anomalyDetector}</span>
-              <Badge variant="status" value="stopped" />
-            </div>
-            <div className="flex justify-between items-center text-sm">
-              <span>{t.settings.attackClassifier}</span>
-              <Badge variant="status" value="stopped" />
-            </div>
-            <p className="text-xs text-text-secondary mt-2">
-              {t.settings.mlNote}
-            </p>
-            <StateBlock
-              title={t.settings.mlPendingTitle}
-              description={t.settings.mlPendingDescription}
-              testId="settings-ml-state"
-            />
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="flex justify-between items-center text-sm">
-              <span>{t.settings.anomalyDetector}</span>
-              <Badge variant="status" value={anomalyStatus} />
-            </div>
-            <div className="flex justify-between items-center text-sm">
-              <span>{t.settings.attackClassifier}</span>
-              <Badge variant="status" value={classifierStatus} />
-            </div>
-            <p className="text-xs text-text-secondary mt-2">
-              {t.settings.mlNote}
-            </p>
-            {(anomalyStatus === 'pending' || classifierStatus === 'pending') && (
-              <StateBlock
-                title={t.settings.mlPendingTitle}
-                description={t.settings.mlPendingDescription}
-                testId="settings-ml-state"
-              />
-            )}
-          </div>
-        )}
-      </Card>
-
-      {/* Информация */}
-      <Card title={t.settings.about} testId="settings-about-card">
         <div className="space-y-4">
-          <div className="space-y-1">
-            <div className="text-base font-semibold text-text-primary">{t.settings.version}</div>
-            <div className="text-sm text-text-secondary">{t.settings.subtitle}</div>
+          <div className="flex items-center justify-between text-sm gap-4">
+            <span>{t.settings.language}</span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                data-testid="settings-language-ru"
+                onClick={() => setLocale('ru')}
+                className={`rounded border px-3 py-1.5 text-sm transition-colors ${
+                  locale === 'ru'
+                    ? 'border-accent-blue bg-bg-card-hover text-accent-blue'
+                    : 'border-border text-text-secondary hover:text-text-primary hover:bg-bg-card-hover'
+                }`}
+              >
+                Русский
+              </button>
+              <button
+                type="button"
+                data-testid="settings-language-en"
+                onClick={() => setLocale('en')}
+                className={`rounded border px-3 py-1.5 text-sm transition-colors ${
+                  locale === 'en'
+                    ? 'border-accent-blue bg-bg-card-hover text-accent-blue'
+                    : 'border-border text-text-secondary hover:text-text-primary hover:bg-bg-card-hover'
+                }`}
+              >
+                English
+              </button>
+            </div>
           </div>
-          <div className="grid gap-3 md:grid-cols-3 text-sm">
-            <div className="rounded-lg border border-border bg-bg-primary/40 px-4 py-3">
-              <div className="text-xs uppercase tracking-wider text-text-secondary">{t.settings.releaseChannel}</div>
-              <div className="mt-1 text-text-primary">{t.settings.betaChannel}</div>
-            </div>
-            <div className="rounded-lg border border-border bg-bg-primary/40 px-4 py-3">
-              <div className="text-xs uppercase tracking-wider text-text-secondary">{t.settings.deploymentMode}</div>
-              <div className="mt-1 text-text-primary">{t.settings.selfHosted}</div>
-            </div>
-            <div className="rounded-lg border border-border bg-bg-primary/40 px-4 py-3">
-              <div className="text-xs uppercase tracking-wider text-text-secondary">{t.settings.uiLanguage}</div>
-              <div className="mt-1 text-text-primary">{locale === 'ru' ? 'Русский' : 'English'}</div>
-            </div>
-          </div>
-          <div className="text-xs text-text-secondary">
-            {t.settings.aboutDescription}
+          <div className="flex items-center justify-between text-sm gap-4">
+            <span>{t.settings.theme}</span>
+            <button
+              data-testid="settings-theme-toggle"
+              onClick={toggleTheme}
+              className="bg-bg-primary border border-border rounded px-4 py-1.5 text-sm text-text-primary hover:bg-bg-card-hover transition-colors"
+            >
+              {theme === 'dark' ? t.settings.switchToLight : t.settings.switchToDark}
+            </button>
           </div>
         </div>
       </Card>

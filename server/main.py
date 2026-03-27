@@ -3,6 +3,7 @@ import asyncio
 import logging
 import os
 import secrets
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator
@@ -49,7 +50,7 @@ def create_app(
     async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         from tasks.retention import cleanup_old_data
         from tasks.expiry import expire_blocked_ips
-        from ml.trainer import init_models, train_anomaly_from_db
+        from ml.trainer import init_models, train_anomaly_from_db, _set_anomaly_status
 
         global _writer_task, _bg_tasks
         await init_db(db_path)
@@ -80,15 +81,31 @@ def create_app(
                 except Exception:
                     logging.getLogger("nullius").warning("Ошибка в retention loop", exc_info=True)
 
-        # Обучение anomaly detector: первый запуск через час, потом каждые 6 часов
+        # Обучение anomaly detector: первый прогон не откладываем слишком надолго,
+        # а дальнейший интервал берём из конфига, чтобы runtime был предсказуемым.
         async def _ml_training_loop():
-            await asyncio.sleep(3600)
+            training_period = max(300, int(config.ml.training_period))
+            initial_delay = min(900, training_period)
+            _set_anomaly_status("pending", "waiting_for_first_run", next_run_at=int(time.time()) + initial_delay)
+            await asyncio.sleep(initial_delay)
             while True:
                 try:
                     await train_anomaly_from_db(db_path, hours=24)
                 except Exception:
+                    _set_anomaly_status("failed", "training_failed", next_run_at=int(time.time()) + training_period)
                     logging.getLogger("nullius").warning("Ошибка в ML training loop", exc_info=True)
-                await asyncio.sleep(6 * 3600)
+                else:
+                    from ml.trainer import get_anomaly_status
+
+                    current = get_anomaly_status()
+                    _set_anomaly_status(
+                        str(current["status"]),
+                        str(current["reason_code"]),
+                        samples_count=int(current["samples_count"]),
+                        event_count=int(current["event_count"]),
+                        next_run_at=int(time.time()) + training_period,
+                    )
+                await asyncio.sleep(training_period)
 
         _bg_tasks = [
             asyncio.create_task(_expiry_loop()),
@@ -128,6 +145,22 @@ def create_app(
             )
     set_api_token(api_token)
 
+    # UI WebSocket token тоже отделяем от agent secret.
+    # При желании можно переиспользовать API token, но только как UI-секрет,
+    # а не как доверенный секрет агента.
+    ui_ws_token = ""
+    if config.api.require_ws_token:
+        ui_ws_token = (
+            os.environ.get("NULLIUS_WS_TOKEN", "").strip()
+            or config.api.ws_token.strip()
+            or api_token
+        )
+        if not ui_ws_token:
+            raise RuntimeError(
+                "WS auth включён, но api.ws_token / NULLIUS_WS_TOKEN не задан. "
+                "Допустимо также переиспользовать UI API token, если включён Bearer auth."
+            )
+
     app = FastAPI(title="Nullius API", lifespan=lifespan)
 
     app.add_middleware(
@@ -155,7 +188,7 @@ def create_app(
 
     @app.websocket("/ws/live")
     async def ws_live(ws: WebSocket):
-        await frontend_ws_handler(ws, agent_secret if config.api.require_ws_token else "")
+        await frontend_ws_handler(ws, ui_ws_token)
 
     return app
 

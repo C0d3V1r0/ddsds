@@ -24,6 +24,7 @@ export function useBlockIP() {
     mutationFn: ({ ip, reason, duration }: { ip: string; reason: string; duration?: number }) =>
       api.blockIP(ip, reason, duration),
     onSuccess: () => {
+      // После ручного блока нам важно сразу обновить и список блокировок, и ленту событий.
       qc.invalidateQueries({ queryKey: ['blockedIPs'] });
       qc.invalidateQueries({ queryKey: ['securityEvents'] });
     },

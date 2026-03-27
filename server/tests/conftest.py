@@ -68,6 +68,7 @@ api:
   require_bearer_auth: true
   require_ws_token: true
   token: test-api-token-for-tests
+  ws_token: test-ws-token-for-tests
 """
     p = tmp_path / "secure-nullius.yaml"
     p.write_text(config)
@@ -76,6 +77,7 @@ api:
 
 TEST_AGENT_SECRET = "test-secret-for-tests"
 TEST_API_TOKEN = "test-api-token-for-tests"
+TEST_WS_TOKEN = "test-ws-token-for-tests"
 
 
 @pytest_asyncio.fixture

@@ -36,10 +36,15 @@ export function Dashboard() {
         </div>
         <Card testId="dashboard-system-state-card" className="w-full xl:w-[26rem]">
           <div className="text-xs uppercase tracking-wider text-text-secondary mb-2">{t.dashboard.systemState}</div>
-          <div className={`text-sm font-medium ${hasCriticalIssue ? 'text-accent-yellow' : 'text-accent-green'}`}>
-            {hasCriticalIssue ? t.dashboard.systemAttention : t.dashboard.systemHealthy}
+          <div className="flex items-center gap-2">
+            <span
+              className={`h-2.5 w-2.5 rounded-full ${hasCriticalIssue ? 'bg-accent-yellow' : 'bg-accent-green'}`}
+              aria-hidden="true"
+            />
+            <div className={`text-sm font-medium ${hasCriticalIssue ? 'text-accent-yellow' : 'text-accent-green'}`}>
+              {hasCriticalIssue ? t.dashboard.systemAttention : t.dashboard.systemHealthy}
+            </div>
           </div>
-          <div className="mt-1 text-xs text-text-secondary">{t.dashboard.systemStateHint}</div>
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <div className="text-[11px] uppercase tracking-wider text-text-secondary">{t.dashboard.lastUpdate}</div>

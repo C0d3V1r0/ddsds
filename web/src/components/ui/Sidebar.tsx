@@ -1,10 +1,14 @@
 // - Боковая навигация приложения
 import { NavLink } from 'react-router-dom';
 import { t } from '../../lib/i18n';
+import { useStore } from '../../stores/store';
 
 export function Sidebar() {
+  useStore((state) => state.locale);
+
   const navItems = [
     { path: '/', label: t.nav.dashboard, icon: '\u25C9' },
+    { path: '/system', label: t.nav.system, icon: '\u25A6' },
     { path: '/security', label: t.nav.security, icon: '\u26E8' },
     { path: '/processes', label: t.nav.processes, icon: '\u2699' },
     { path: '/logs', label: t.nav.logs, icon: '\u2261' },
@@ -16,7 +20,7 @@ export function Sidebar() {
       <div data-testid="app-brand" className="text-xl font-bold tracking-widest text-text-primary px-3 mb-8">
         NULLIUS
       </div>
-      <nav className="flex flex-col gap-1" aria-label="Основная навигация">
+      <nav className="flex flex-col gap-1" aria-label={t.nav.mainNavigation}>
         {navItems.map((item) => (
           <NavLink
             key={item.path}

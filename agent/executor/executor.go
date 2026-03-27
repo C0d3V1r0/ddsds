@@ -71,7 +71,7 @@ func IsDeniedPID(pid int) bool {
 }
 
 // Executor выполняет команды, полученные от API-сервера через WebSocket.
-// Поддерживает: block_ip, unblock_ip, kill_process, restart_service.
+// Поддерживает: block_ip, unblock_ip, kill_process, force_kill_process, restart_service.
 type Executor struct {
 	AllowedServices []string
 }
@@ -101,6 +101,12 @@ func (e *Executor) Execute(ctx context.Context, command string, params map[strin
 			return "", fmt.Errorf("invalid pid: %v", params["pid"])
 		}
 		return killProcess(ctx, int(pid))
+	case "force_kill_process":
+		pid, _ := params["pid"].(float64)
+		if pid <= 0 {
+			return "", fmt.Errorf("invalid pid: %v", params["pid"])
+		}
+		return forceKillProcess(int(pid))
 	case "restart_service":
 		name, _ := params["name"].(string)
 		if !ValidateService(name, e.AllowedServices) {

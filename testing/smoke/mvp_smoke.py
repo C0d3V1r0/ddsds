@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import json
 import os
+import platform
+import shutil
 import ssl
 import subprocess
 import sys
@@ -32,6 +34,10 @@ def load_password() -> str:
 
 def pass_msg(message: str) -> None:
     print(f"[PASS] {message}")
+
+
+def warn_msg(message: str) -> None:
+    print(f"[WARN] {message}")
 
 
 def fail(message: str) -> None:
@@ -76,7 +82,13 @@ def request_dashboard() -> str:
 
 def check_systemd() -> None:
     if SKIP_SYSTEMD:
-        print("[WARN] systemd checks skipped by NULLIUS_SKIP_SYSTEMD=1")
+        warn_msg("systemd checks skipped by NULLIUS_SKIP_SYSTEMD=1")
+        return
+    if platform.system() != "Linux":
+        warn_msg(f"systemd checks skipped on non-Linux host: {platform.system()}")
+        return
+    if shutil.which("systemctl") is None:
+        warn_msg("systemd checks skipped because systemctl is not available in PATH")
         return
     for service in ("nullius-api", "nullius-agent", "nginx"):
         result = subprocess.run(

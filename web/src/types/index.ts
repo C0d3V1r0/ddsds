@@ -49,6 +49,12 @@ export interface ProcessInfo {
   ram: number;
 }
 
+export interface ProcessActionResult {
+  status: string;
+  pid: number;
+  name: string;
+}
+
 export interface LogEntry {
   timestamp: number;
   source: string;

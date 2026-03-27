@@ -32,5 +32,6 @@ api:
   require_bearer_auth: false
   require_ws_token: false
   token: ""
+  ws_token: ""
   cors_origins:
     - http://localhost:3000

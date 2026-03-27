@@ -8,6 +8,15 @@ const statusListeners: Set<StatusListener> = new Set();
 let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 let shouldReconnect = false;
+const UI_TOKEN_STORAGE_KEY = 'nullius_api_token';
+
+function getUiToken(): string {
+  try {
+    return window.localStorage.getItem(UI_TOKEN_STORAGE_KEY)?.trim() || '';
+  } catch {
+    return '';
+  }
+}
 
 // Устанавливает WS-соединение с автоматическим переподключением
 export function connectWS(): void {
@@ -43,6 +52,11 @@ export function connectWS(): void {
   };
 
   socket.onopen = () => {
+    const token = getUiToken();
+    // Если UI дополнительно защищён Bearer/WS-токеном, отправляем его сразу после connect.
+    if (token) {
+      socket?.send(JSON.stringify({ token }));
+    }
     statusListeners.forEach((fn) => fn(true));
     // Heartbeat каждые 15с чтобы соединение не закрывалось по таймауту
     heartbeatInterval = setInterval(() => {

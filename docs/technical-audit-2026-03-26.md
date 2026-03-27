@@ -30,8 +30,13 @@
 - auth-модель для MVP упрощена и приведена к рабочей схеме
 - Bearer auth API разведен с агентским секретом через отдельный `api.token` / `NULLIUS_API_TOKEN`
 - убран небезопасный fallback `api token -> agent secret`
+- UI WebSocket auth разведен с агентским секретом через отдельный `api.ws_token` / `NULLIUS_WS_TOKEN`
+- включён реальный nginx rate limiting для `/api`, `/ws/live` и `/ws/agent`
+- `/ws/agent` переведён в deny-by-default режим с отдельным nginx allowlist для доверенных сетей агента
 - CORS origins вынесены из хардкода в `api.cors_origins`
 - модель реакции на угрозы стала прозрачнее: `logged`, `review_required`, `auto_block`
+- статус anomaly detector теперь отдаёт расширенное состояние и причину, а не только `ready`
+- ML training loop теперь использует `ml.training_period` из конфига вместо хардкода
 
 ### Frontend / Performance
 
@@ -47,6 +52,9 @@
 - loading/error/empty состояния стали единообразнее
 - `Security`, `Processes`, `Settings`, `Logs` стали понятнее в first-run сценарии
 - ручные действия на `Security` стали яснее и безопаснее
+- системная сводка вынесена в отдельную страницу `Система`, а `Настройки` оставлены для реальных UI-предпочтений
+- на графиках прорежены подписи осей, чтобы они не слипались
+- логи получили фильтр по диапазону времени, а процессы — разделение `Завершить` / `Убить`
 
 ### Repo Hygiene
 
@@ -70,6 +78,7 @@
 
 Можно считать, что:
 
+- Nullius оформился как self-hosted платформа защиты Linux-сервера, а не как набор разрозненных security-скриптов
 - MVP функционально рабочий
 - чистая установка воспроизводима
 - uninstall воспроизводим

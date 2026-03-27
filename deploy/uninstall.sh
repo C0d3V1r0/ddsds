@@ -42,6 +42,8 @@ systemctl reset-failed nullius-api nullius-agent 2>/dev/null || true
 log_step "4/8" "Удаление nginx-конфига..."
 rm -f /etc/nginx/sites-enabled/nullius
 rm -f /etc/nginx/sites-available/nullius
+rm -f /etc/nginx/conf.d/nullius-limits.conf
+rm -f /etc/nginx/snippets/nullius-agent-allowlist.conf
 nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null || true
 
 log_step "5/8" "Удаление logrotate и CLI..."

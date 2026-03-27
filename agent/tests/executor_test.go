@@ -53,3 +53,10 @@ func TestValidateServiceNameRegex(t *testing.T) {
 		t.Error("should reject path traversal")
 	}
 }
+
+func TestForceKillProcessRejectsDeniedPID(t *testing.T) {
+	e := executor.New(nil)
+	if _, err := e.Execute(t.Context(), "force_kill_process", map[string]interface{}{"pid": float64(1)}); err == nil {
+		t.Error("force kill should reject denied PID")
+	}
+}

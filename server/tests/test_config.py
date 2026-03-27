@@ -20,6 +20,7 @@ api:
   require_bearer_auth: true
   require_ws_token: true
   token: bearer-token
+  ws_token: ws-token
   cors_origins:
     - http://localhost:3000
     - https://nullius.local
@@ -41,6 +42,7 @@ api:
     assert config.api.require_bearer_auth is True
     assert config.api.require_ws_token is True
     assert config.api.token == "bearer-token"
+    assert config.api.ws_token == "ws-token"
     assert config.api.cors_origins == [
         "http://localhost:3000",
         "https://nullius.local",

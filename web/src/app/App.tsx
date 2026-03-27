@@ -10,6 +10,7 @@ import { useStore } from '../stores/store';
 import { setLocaleMessages, t } from '../lib/i18n';
 
 const Dashboard = lazy(async () => import('../pages/Dashboard').then((module) => ({ default: module.Dashboard })));
+const System = lazy(async () => import('../pages/System').then((module) => ({ default: module.System })));
 const Security = lazy(async () => import('../pages/Security').then((module) => ({ default: module.Security })));
 const Processes = lazy(async () => import('../pages/Processes').then((module) => ({ default: module.Processes })));
 const Logs = lazy(async () => import('../pages/Logs').then((module) => ({ default: module.Logs })));
@@ -58,6 +59,7 @@ function AppShell() {
             <Suspense fallback={<RouteFallback />}>
               <Routes>
                 <Route path="/" element={<Dashboard />} />
+                <Route path="/system" element={<System />} />
                 <Route path="/security" element={<Security />} />
                 <Route path="/processes" element={<Processes />} />
                 <Route path="/logs" element={<Logs />} />
