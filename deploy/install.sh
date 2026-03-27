@@ -272,13 +272,28 @@ systemctl daemon-reload
 
 # Nginx
 cp "$SCRIPT_DIR/nginx-nullius.conf" /etc/nginx/sites-available/nullius
+mkdir -p /etc/nginx/snippets
+
+# Fail-closed: даже если dist собран неидеально, генерируем безопасные nginx-snippets на месте.
 if [[ -f "$SCRIPT_DIR/nginx-nullius-limits.conf" ]]; then
     cp "$SCRIPT_DIR/nginx-nullius-limits.conf" /etc/nginx/conf.d/nullius-limits.conf
+else
+    cat > /etc/nginx/conf.d/nullius-limits.conf <<'NGINX_LIMITS'
+limit_req_zone $binary_remote_addr zone=nullius_api:10m rate=30r/s;
+limit_req_zone $binary_remote_addr zone=nullius_ws:10m rate=5r/s;
+NGINX_LIMITS
 fi
-mkdir -p /etc/nginx/snippets
+
 if [[ -f "$SCRIPT_DIR/nginx-agent-allowlist.conf" ]]; then
     cp "$SCRIPT_DIR/nginx-agent-allowlist.conf" /etc/nginx/snippets/nullius-agent-allowlist.conf
+else
+    cat > /etc/nginx/snippets/nullius-agent-allowlist.conf <<'NGINX_AGENT_ALLOW'
+allow 127.0.0.1;
+allow ::1;
+deny all;
+NGINX_AGENT_ALLOW
 fi
+
 ln -sf /etc/nginx/sites-available/nullius /etc/nginx/sites-enabled/nullius
 
 # Удаление default-конфига nginx если мешает

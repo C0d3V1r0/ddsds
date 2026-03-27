@@ -50,6 +50,8 @@ cp deploy/nullius-ctl "$BUILD_DIR/"
 cp deploy/nullius-agent.service "$BUILD_DIR/"
 cp deploy/nullius-api.service "$BUILD_DIR/"
 cp deploy/nginx-nullius.conf "$BUILD_DIR/"
+cp deploy/nginx-nullius-limits.conf "$BUILD_DIR/"
+cp deploy/nginx-agent-allowlist.conf "$BUILD_DIR/"
 cp deploy/uninstall.sh "$BUILD_DIR/"
 
 # Генерация контрольных сумм
