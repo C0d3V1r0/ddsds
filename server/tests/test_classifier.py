@@ -33,6 +33,8 @@ def test_classifier_predicts_ssh(trained_classifier):
     """Проверяет классификацию SSH brute force"""
     result = trained_classifier.predict("Failed password for root from 192.168.1.1 port 22 ssh2")
     assert result["label"] == "ssh_brute_force"
+    assert 0.0 <= result["confidence"] <= 1.0
+    assert result["confidence"] > 0.0
 
 
 def test_classifier_predicts_sqli(trained_classifier):
@@ -57,6 +59,7 @@ def test_classifier_predicts_normal(trained_classifier):
     """Проверяет классификацию нормального трафика"""
     result = trained_classifier.predict("GET /index.html HTTP/1.1 200")
     assert result["label"] == "normal"
+    assert 0.0 <= result["confidence"] <= 1.0
 
 
 def test_classifier_save_load(trained_classifier, tmp_path):

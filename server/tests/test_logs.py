@@ -60,3 +60,47 @@ async def test_get_logs_filters_by_timestamp_range(test_app):
     assert resp.status_code == 200
     data = resp.json()
     assert [entry["line"] for entry in data] == ["in-range-entry"]
+
+
+@pytest.mark.asyncio
+async def test_get_logs_filters_by_ip_and_search_query(test_app):
+    now = int(time.time())
+    await _handle_log({
+        "timestamp": now - 20,
+        "data": {"source": "auth", "line": "Failed password for root from 203.0.113.9 port 22 ssh2", "file": "/var/log/auth.log"},
+    })
+    await _handle_log({
+        "timestamp": now - 10,
+        "data": {"source": "auth", "line": "Accepted publickey for root from 198.51.100.7 port 22 ssh2", "file": "/var/log/auth.log"},
+    })
+
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/api/logs?source=auth&ip=203.0.113.9&q=failed&limit=10")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    assert "203.0.113.9" in data[0]["line"]
+
+
+@pytest.mark.asyncio
+async def test_get_logs_filters_by_event_type(test_app):
+    now = int(time.time())
+    await _handle_log({
+        "timestamp": now - 30,
+        "data": {"source": "nginx", "line": '10.0.0.5 - - "GET /index.html HTTP/1.1" 200', "file": "/var/log/nginx/access.log"},
+    })
+    await _handle_log({
+        "timestamp": now - 20,
+        "data": {"source": "nginx", "line": '10.0.0.5 - - "GET /../../etc/passwd HTTP/1.1" 200', "file": "/var/log/nginx/access.log"},
+    })
+
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/api/logs?event_type=path_traversal&limit=10")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    assert "../../etc/passwd" in data[0]["line"]

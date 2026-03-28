@@ -3,6 +3,7 @@ import os
 
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, HTTPException
+from security.audit import append_response_audit, make_trace_id
 
 router = APIRouter()
 
@@ -29,9 +30,16 @@ def get_agent_ws():
     return _get_agent_ws()
 
 
-async def send_command(command: str, params: dict) -> None:
+async def request_agent_command(
+    command: str,
+    params: dict,
+    *,
+    await_result: bool = False,
+    timeout: float = 6.0,
+):
+    """Единая точка отправки команд агенту с поддержкой ожидания результата."""
     from ws.agent import send_command as _send_command
-    await _send_command(command, params)
+    return await _send_command(command, params, await_result=await_result, timeout=timeout)
 
 
 def _find_process(pid: int) -> dict[str, object] | None:
@@ -63,6 +71,15 @@ def update_processes(processes: list[dict[str, object]]) -> None:
     _latest_processes = list(processes[:MAX_PROCESS_SNAPSHOT])
 
 
+def _build_process_command_payload(proc: dict[str, object], pid: int) -> dict[str, object]:
+    """Собирает минимальный payload, чтобы агент сверил именно тот же процесс."""
+    return {
+        "pid": pid,
+        "expected_name": str(proc.get("name", "")),
+        "expected_start_time": int(proc.get("start_time", 0) or 0),
+    }
+
+
 async def _queue_process_command(pid: int, command: str) -> dict[str, object]:
     proc = _find_process(pid)
     if proc is None:
@@ -72,9 +89,39 @@ async def _queue_process_command(pid: int, command: str) -> dict[str, object]:
     if get_agent_ws() is None:
         raise HTTPException(status_code=503, detail="Agent is not connected")
 
-    await send_command(command, {"pid": pid})
+    trace_id = make_trace_id()
+    result = await request_agent_command(
+        command,
+        {
+            **_build_process_command_payload(proc, pid),
+            "_meta": {
+                "trace_id": trace_id,
+                "action": command,
+                "origin": "process_api",
+            },
+        },
+        await_result=True,
+    )
+    if not result or result.get("status") != "success":
+        await append_response_audit(
+            trace_id=trace_id,
+            stage="manual_action",
+            status="failed",
+            action=command,
+            command=command,
+            details={"pid": pid, "name": str(proc.get("name", ""))},
+        )
+        raise HTTPException(status_code=502, detail=str((result or {}).get("error") or "Agent command failed"))
+    await append_response_audit(
+        trace_id=trace_id,
+        stage="manual_action",
+        status="success",
+        action=command,
+        command=command,
+        details={"pid": pid, "name": str(proc.get("name", ""))},
+    )
     return {
-        "status": "queued",
+        "status": "success",
         "pid": pid,
         "name": proc.get("name", ""),
     }

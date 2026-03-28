@@ -24,6 +24,8 @@ type LogTailer struct {
 	entries chan LogEntry
 	done    chan struct{}
 	once    sync.Once
+	// missingSeen подавляет спам в логах, если optional log source пока не существует.
+	missingSeen sync.Map
 }
 
 // NewLogTailer создаёт tailer с буфером на 1000 строк — при переполнении новые строки блокируются
@@ -66,7 +68,9 @@ func (lt *LogTailer) tailFile(path string) {
 		}
 		f, err := os.Open(path)
 		if err != nil {
-			log.Printf("Не удалось открыть %s: %v", path, err)
+			if _, loaded := lt.missingSeen.LoadOrStore(path, true); !loaded {
+				log.Printf("Не удалось открыть %s: %v", path, err)
+			}
 			select {
 			case <-lt.done:
 				return
@@ -74,6 +78,7 @@ func (lt *LogTailer) tailFile(path string) {
 			}
 			continue
 		}
+		lt.missingSeen.Delete(path)
 		// Перематываем в конец — старые строки не нужны
 		if _, err := f.Seek(0, io.SeekEnd); err != nil {
 			log.Printf("Seek ошибка %s: %v", path, err)
@@ -130,12 +135,14 @@ func (lt *LogTailer) tailFile(path string) {
 }
 
 // detectSource определяет категорию лога по пути: auth.log → "auth",
-// всё из /var/log/nginx/ → "nginx", остальное → "syslog"
+// firewall-логи → "firewall", всё из /var/log/nginx/ → "nginx", остальное → "syslog"
 func detectSource(path string) string {
 	base := filepath.Base(path)
 	switch {
 	case base == "auth.log":
 		return "auth"
+	case base == "ufw.log":
+		return "firewall"
 	case filepath.Dir(path) == "/var/log/nginx" || base == "access.log" || base == "error.log":
 		return "nginx"
 	default:

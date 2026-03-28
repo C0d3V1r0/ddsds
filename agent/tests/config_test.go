@@ -60,6 +60,9 @@ func TestLoadConfigDefaults(t *testing.T) {
 	if cfg.Agent.ProcessesInterval != 10 {
 		t.Errorf("expected default processes_interval 10, got %d", cfg.Agent.ProcessesInterval)
 	}
+	if len(cfg.Agent.LogSources) < 5 {
+		t.Errorf("expected expanded default log sources, got %d", len(cfg.Agent.LogSources))
+	}
 	if cfg.Agent.TLSSkipVerify != false {
 		t.Errorf("expected default tls_skip_verify false, got %v", cfg.Agent.TLSSkipVerify)
 	}

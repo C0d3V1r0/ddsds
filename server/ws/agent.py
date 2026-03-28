@@ -3,11 +3,13 @@ import hmac
 import json
 import logging
 import time
+import asyncio
 from fastapi import WebSocket, WebSocketDisconnect
-from db import enqueue_write
+from db import enqueue_write, get_db
 from api.logs import append_log
 from api.processes import update_processes
 from api import health
+from security.audit import append_response_audit, extract_audit_meta, make_trace_id, sanitize_command_params
 
 _logger = logging.getLogger("nullius.ws.agent")
 
@@ -19,19 +21,62 @@ MAX_LOG_FILE_CHARS = 512
 
 _agent_ws: WebSocket | None = None
 _detector = None
-_responder = None
 _config = None
+_ml_config = None
+_pending_command_results: dict[str, asyncio.Future] = {}
 
 
 def get_agent_ws() -> WebSocket | None:
     return _agent_ws
 
 
-def init_security(detector, responder, config=None):
-    global _detector, _responder, _config
+def init_security(detector, config=None, ml_config=None):
+    global _detector, _config, _ml_config
     _detector = detector
-    _responder = responder
     _config = config
+    _ml_config = ml_config
+
+
+async def _load_response_context(event: dict, timestamp: int) -> dict[str, object]:
+    """Собирает минимальный контекст для response policy: повторяемость и cooldown."""
+    source_ip = str(event.get("source_ip", "")).strip()
+    if not source_ip or _config is None:
+        return {"recent_events_count": 1, "cooldown_active": False}
+
+    recent_events_count = 1
+    cooldown_active = False
+    conn = await get_db()
+    try:
+        cursor = await conn.execute(
+            "SELECT COUNT(*) FROM security_events WHERE type = ? AND source_ip = ? AND timestamp >= ?",
+            (
+                str(event.get("type", "")),
+                source_ip,
+                timestamp - int(_config.medium_escalation_window),
+            ),
+        )
+        row = await cursor.fetchone()
+        recent_events_count = int((row[0] if row else 0) or 0) + 1
+
+        cursor = await conn.execute(
+            "SELECT blocked_at, expires_at FROM blocked_ips WHERE ip = ?",
+            (source_ip,),
+        )
+        blocked_row = await cursor.fetchone()
+        if blocked_row:
+            blocked_at = int(blocked_row["blocked_at"] or 0)
+            expires_at = blocked_row["expires_at"]
+            cooldown_active = (
+                (expires_at is None and blocked_at >= timestamp - int(_config.response_cooldown))
+                or (expires_at is not None and int(expires_at) > timestamp)
+            )
+    finally:
+        await conn.close()
+
+    return {
+        "recent_events_count": recent_events_count,
+        "cooldown_active": cooldown_active,
+    }
 
 
 async def agent_ws_handler(ws: WebSocket, secret: str):
@@ -77,13 +122,32 @@ async def agent_ws_handler(ws: WebSocket, secret: str):
             elif msg_type == "processes":
                 update_processes(msg.get("data", []))
             elif msg_type == "command_result":
+                cmd_id = str(msg.get("id", ""))
+                future = _pending_command_results.pop(cmd_id, None)
+                if future and not future.done():
+                    future.set_result(msg)
+                audit_meta = extract_audit_meta(msg.get("params", {}))
+                await append_response_audit(
+                    trace_id=audit_meta.get("trace_id", ""),
+                    stage="command_result",
+                    status=str(msg.get("status", "unknown") or "unknown"),
+                    event_type=audit_meta.get("event_type", ""),
+                    source_ip=audit_meta.get("source_ip", ""),
+                    action=audit_meta.get("action", ""),
+                    command=str(msg.get("command", "") or ""),
+                    details={
+                        "origin": audit_meta.get("origin", ""),
+                        "params": sanitize_command_params(msg.get("params", {})),
+                        "error": str(msg.get("error", "") or ""),
+                    },
+                )
                 # Сохраняем результат команды в таблицу agent_commands
                 await enqueue_write(
-                    "INSERT INTO agent_commands (timestamp, command, params, result, error) "
-                    "VALUES (?, ?, ?, ?, ?)",
+                    "INSERT INTO agent_commands (timestamp, command, params, result, error, trace_id) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
                     (int(time.time()), msg.get("command", ""),
                      json.dumps(msg.get("params", {})),
-                     msg.get("status", ""), msg.get("error", ""))
+                     msg.get("status", ""), msg.get("error", ""), audit_meta.get("trace_id", ""))
                 )
             elif msg_type == "disconnect":
                 break
@@ -140,6 +204,7 @@ async def _handle_metrics(msg: dict):
             features = extract_metrics_features(flat)
             result = detector.predict(features)
             if result["is_anomaly"]:
+                trace_id = make_trace_id()
                 event = {
                     "type": "anomaly",
                     "severity": "medium",
@@ -147,11 +212,25 @@ async def _handle_metrics(msg: dict):
                     "description": f"ML anomaly detected (score: {result['score']:.3f})",
                     "raw_log": json.dumps(flat),
                     "action_taken": "review_required",
+                    "trace_id": trace_id,
                 }
+                await append_response_audit(
+                    trace_id=trace_id,
+                    stage="detected",
+                    status="event_created",
+                    event_type=event["type"],
+                    source_ip="",
+                    action=event["action_taken"],
+                    details={
+                        "signal_source": "ml_metrics_detector",
+                        "score": round(float(result["score"]), 4),
+                    },
+                    timestamp=ts,
+                )
                 await enqueue_write(
-                    "INSERT INTO security_events (timestamp, type, severity, source_ip, description, raw_log, action_taken) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (ts, event["type"], event["severity"], "", event["description"], event["raw_log"], event["action_taken"])
+                    "INSERT INTO security_events (timestamp, type, severity, source_ip, description, raw_log, action_taken, trace_id) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (ts, event["type"], event["severity"], "", event["description"], event["raw_log"], event["action_taken"], trace_id)
                 )
                 from ws.frontend import broadcast
                 await broadcast({"type": "security_event", "data": event})
@@ -170,6 +249,7 @@ async def _handle_log(msg: dict):
         "line": str(data.get("line", ""))[:MAX_LOG_LINE_CHARS],
         "file": str(data.get("file", ""))[:MAX_LOG_FILE_CHARS],
     }
+    ts = log_entry["timestamp"]
     append_log(log_entry)
     from ws.frontend import broadcast
     await broadcast({"type": "log", "data": log_entry})
@@ -183,38 +263,34 @@ async def _handle_log(msg: dict):
         if classifier.is_ready():
             text = extract_log_features(data.get("line", ""))
             ml_result = classifier.predict(text)
-            if ml_result["label"] not in ("normal", "unknown"):
-                ml_event = ml_result
+            ml_event = ml_result
     except Exception as exc:
         _logger.debug(f"ML classify пропущен: {exc}")
 
     if _detector is None:
         return
-    event = _detector.check_log(data)
-
-    # Если rule-based не сработал, но ML обнаружил атаку — создаём событие с low severity
-    if event is None and ml_event is not None:
-        ts = msg.get("timestamp", int(time.time()))
-        event = {
-            "type": ml_event["label"],
-            "severity": "low",
-            "source_ip": "",
-            "description": f"ML-detected: {ml_event['label']}",
-            "raw_log": data.get("line", ""),
-            "action_taken": "review_required",
-        }
-        await enqueue_write(
-            "INSERT INTO security_events (timestamp, type, severity, source_ip, description, raw_log, action_taken) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (ts, event["type"], event["severity"], "", event["description"], event["raw_log"], event["action_taken"])
-        )
-        await broadcast({"type": "security_event", "data": event})
-        return
+    from security.integration import merge_log_detection
+    event = merge_log_detection(
+        _detector.check_log(data),
+        ml_event,
+        raw_log=str(data.get("line", "")),
+        # Порог ML живёт в ML-конфиге, но оставляем мягкий фоллбэк для старых тестов.
+        ml_min_confidence=float(getattr(_ml_config, "log_classifier_min_confidence", 0.6)) if _ml_config else 0.6,
+    )
 
     if event is None:
         return
-    ts = msg.get("timestamp", int(time.time()))
-    action = _responder.decide(event)
+    from security.responder import decide_response
+    trace_id = make_trace_id()
+
+    response_context = await _load_response_context(event, int(ts))
+    action = decide_response(
+        event,
+        auto_block=bool(_config.auto_block) if _config else True,
+        recent_events_count=int(response_context["recent_events_count"]),
+        medium_escalation_threshold=int(_config.medium_escalation_threshold) if _config else 3,
+        cooldown_active=bool(response_context["cooldown_active"]),
+    )
     action_taken = "logged"
     if action["action"] == "review":
         action_taken = "review_required"
@@ -222,16 +298,59 @@ async def _handle_log(msg: dict):
         action_taken = "auto_block"
 
     event["action_taken"] = action_taken
+    event["trace_id"] = trace_id
+    await append_response_audit(
+        trace_id=trace_id,
+        stage="detected",
+        status="event_created",
+        event_type=str(event["type"]),
+        source_ip=str(event.get("source_ip", "")),
+        action=action_taken,
+        details={
+            "severity": str(event["severity"]),
+            "description": str(event["description"]),
+            "recent_events_count": int(response_context["recent_events_count"]),
+            "cooldown_active": bool(response_context["cooldown_active"]),
+        },
+        timestamp=ts,
+    )
+    await append_response_audit(
+        trace_id=trace_id,
+        stage="decision",
+        status=action["action"],
+        event_type=str(event["type"]),
+        source_ip=str(event.get("source_ip", "")),
+        action=action_taken,
+        details={
+            "policy_action": action["action"],
+            "recent_events_count": int(response_context["recent_events_count"]),
+            "cooldown_active": bool(response_context["cooldown_active"]),
+        },
+        timestamp=ts,
+    )
     await enqueue_write(
-        "INSERT INTO security_events (timestamp, type, severity, source_ip, description, raw_log, action_taken) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO security_events (timestamp, type, severity, source_ip, description, raw_log, action_taken, trace_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         (ts, event["type"], event["severity"], event.get("source_ip", ""),
-         event["description"], event.get("raw_log", ""), action_taken)
+         event["description"], event.get("raw_log", ""), action_taken, trace_id)
     )
     if action["action"] == "block":
         # Длительность блокировки берём из конфига, 86400 — фоллбэк по умолчанию
         block_duration = _config.ssh_brute_force.block_duration if _config else DEFAULT_BLOCK_DURATION
-        await send_command("block_ip", {"ip": action["ip"], "duration": block_duration})
+        await send_command(
+            "block_ip",
+            {
+                "ip": action["ip"],
+                "duration": block_duration,
+                "_meta": {
+                    "trace_id": trace_id,
+                    "event_type": str(event["type"]),
+                    "source_ip": str(action["ip"]),
+                    "action": action_taken,
+                    "origin": "auto_response",
+                },
+            },
+        )
         await enqueue_write(
             "INSERT OR REPLACE INTO blocked_ips (ip, reason, blocked_at, expires_at, auto) "
             "VALUES (?, ?, ?, ?, 1)",
@@ -254,8 +373,34 @@ async def _handle_services(msg: dict):
         )
 
 
-async def send_command(command: str, params: dict) -> None:
+async def send_command(command: str, params: dict, await_result: bool = False, timeout: float = 6.0) -> dict | None:
     ws = get_agent_ws()
     if ws:
         cmd_id = f"cmd_{int(time.time() * 1000)}"
+        future: asyncio.Future | None = None
+        if await_result:
+            future = asyncio.get_running_loop().create_future()
+            _pending_command_results[cmd_id] = future
         await ws.send_json({"id": cmd_id, "command": command, "params": params})
+        audit_meta = extract_audit_meta(params)
+        await append_response_audit(
+            trace_id=audit_meta.get("trace_id", ""),
+            stage="command_dispatched",
+            status="queued",
+            event_type=audit_meta.get("event_type", ""),
+            source_ip=audit_meta.get("source_ip", ""),
+            action=audit_meta.get("action", ""),
+            command=command,
+            details={
+                "origin": audit_meta.get("origin", ""),
+                "params": sanitize_command_params(params),
+            },
+        )
+        if not future:
+            return None
+        try:
+            return await asyncio.wait_for(future, timeout=timeout)
+        except Exception:
+            _pending_command_results.pop(cmd_id, None)
+            raise
+    return None

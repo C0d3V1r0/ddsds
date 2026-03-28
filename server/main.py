@@ -13,11 +13,11 @@ from config import load_config
 from db import init_db, start_writer, stop_writer
 from api import health, metrics, services, processes, logs, security
 from api import ml_status
+from api import risk
 from api.auth import require_auth, set_api_token
 from ws.agent import agent_ws_handler, init_security
 from ws.frontend import frontend_ws_handler
 from security.detector import Detector
-from security.responder import Responder
 
 SECRET_TOKEN_BYTES = 32
 
@@ -43,8 +43,7 @@ def create_app(
     config = load_config(config_path)
 
     detector = Detector(config.security)
-    responder = Responder(auto_block=config.security.auto_block)
-    init_security(detector, responder, config.security)
+    init_security(detector, config.security, config.ml)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
@@ -90,7 +89,16 @@ def create_app(
             await asyncio.sleep(initial_delay)
             while True:
                 try:
-                    await train_anomaly_from_db(db_path, hours=24)
+                    await train_anomaly_from_db(
+                        db_path,
+                        hours=max(1, int(config.ml.baseline_hours)),
+                        min_samples=max(50, int(config.ml.min_clean_samples)),
+                        max_clean_events=max(1, int(config.ml.max_clean_events)),
+                        base_buffer_seconds=max(30, int(config.ml.baseline_buffer_seconds)),
+                        host_profile=str(config.ml.host_profile).strip() or "generic",
+                        maintenance_window_seconds=max(60, int(config.ml.maintenance_window_seconds)),
+                        maintenance_commands=tuple(config.ml.maintenance_commands),
+                    )
                 except Exception:
                     _set_anomaly_status("failed", "training_failed", next_run_at=int(time.time()) + training_period)
                     logging.getLogger("nullius").warning("Ошибка в ML training loop", exc_info=True)
@@ -102,7 +110,20 @@ def create_app(
                         str(current["status"]),
                         str(current["reason_code"]),
                         samples_count=int(current["samples_count"]),
+                        filtered_samples_count=int(current["filtered_samples_count"]),
+                        discarded_samples_count=int(current["discarded_samples_count"]),
+                        required_samples=int(current["required_samples"]),
                         event_count=int(current["event_count"]),
+                        max_event_count=int(current["max_event_count"]),
+                        maintenance_event_count=int(current["maintenance_event_count"]),
+                        host_profile=str(current["host_profile"]),
+                        filter_window_seconds=int(current["filter_window_seconds"]),
+                        maintenance_window_seconds=int(current["maintenance_window_seconds"]),
+                        dataset_quality_score=int(current["dataset_quality_score"]),
+                        dataset_quality_label=str(current["dataset_quality_label"]),
+                        dataset_noise_label=str(current["dataset_noise_label"]),
+                        weighted_event_pressure=int(current["weighted_event_pressure"]),
+                        excluded_windows_count=int(current["excluded_windows_count"]),
                         next_run_at=int(time.time()) + training_period,
                     )
                 await asyncio.sleep(training_period)
@@ -181,6 +202,7 @@ def create_app(
     app.include_router(logs.router, dependencies=[Depends(require_auth)])
     app.include_router(security.router, dependencies=[Depends(require_auth)])
     app.include_router(ml_status.router, dependencies=[Depends(require_auth)])
+    app.include_router(risk.router, dependencies=[Depends(require_auth)])
 
     @app.websocket("/ws/agent")
     async def ws_agent(ws: WebSocket):

@@ -38,9 +38,15 @@ func Load(path string) (*Config, error) {
 			MetricsInterval:   5,
 			ServicesInterval:  30,
 			ProcessesInterval: 10,
-			LogSources:        []string{"/var/log/auth.log"},
-			ServerURL:         "ws://127.0.0.1:8000/ws/agent",
-			TLSSkipVerify:     false,
+			LogSources: []string{
+				"/var/log/auth.log",
+				"/var/log/nginx/access.log",
+				"/var/log/nginx/error.log",
+				"/var/log/ufw.log",
+				"/var/log/kern.log",
+			},
+			ServerURL:     "ws://127.0.0.1:8000/ws/agent",
+			TLSSkipVerify: false,
 		},
 		Security: SecurityConfig{
 			AllowedServices: []string{"nginx", "postgresql", "redis", "mysql", "docker"},

@@ -37,6 +37,11 @@
 - модель реакции на угрозы стала прозрачнее: `logged`, `review_required`, `auto_block`
 - статус anomaly detector теперь отдаёт расширенное состояние и причину, а не только `ready`
 - ML training loop теперь использует `ml.training_period` из конфига вместо хардкода
+- подготовка baseline для anomaly detector вынесена в отдельный dataset builder с quality score, clean/discarded samples и фильтрацией шумных интервалов вокруг security events
+- detection layer приведён к structured framework с явным registry правил вместо разрозненного роутинга по source
+- `port_scan` больше не является “висячим” типом события: добавлен реальный detector по firewall/kernel логам и end-to-end enrich/policy path
+- проведён отдельный `functional-first` refactor pass: detection/baseline pipeline избавлен от лишних data-only классов, а `processes API` и frontend security hooks стали менее связанными и проще для тестирования
+- добавлен `Response trail`: backend теперь хранит этапы `detected -> decision -> command_dispatched -> command_result`, а UI умеет показать эту цепочку для конкретного события или инцидента
 
 ### Frontend / Performance
 
@@ -55,6 +60,7 @@
 - системная сводка вынесена в отдельную страницу `Система`, а `Настройки` оставлены для реальных UI-предпочтений
 - на графиках прорежены подписи осей, чтобы они не слипались
 - логи получили фильтр по диапазону времени, а процессы — разделение `Завершить` / `Убить`
+- `Logs Investigation` доведён до реального расследовательского workflow: из `Security` можно открыть связанные логи, а backend умеет фильтровать буфер по IP, поисковому запросу и типу события
 
 ### Repo Hygiene
 

@@ -1,5 +1,5 @@
 // HTTP-клиент для взаимодействия с backend API
-import type { HealthStatus, Metrics, ServiceInfo, ProcessInfo, ProcessActionResult, LogEntry, SecurityEvent, BlockedIP } from '../types';
+import type { HealthStatus, Metrics, ServiceInfo, ProcessInfo, ProcessActionResult, LogEntry, SecurityEvent, SecurityIncident, BlockedIP, RiskScore, LogFilters, ResponseAuditEntry } from '../types';
 
 const BASE = import.meta.env.VITE_API_URL || '/api';
 const UI_TOKEN_STORAGE_KEY = 'nullius_api_token';
@@ -43,9 +43,20 @@ interface MlStatusResponse {
     status: 'running' | 'pending' | 'training' | 'insufficient_data' | 'postponed' | 'failed';
     reason_code: string;
     samples_count: number;
+    filtered_samples_count: number;
+    discarded_samples_count: number;
     required_samples: number;
     event_count: number;
     max_event_count: number;
+    maintenance_event_count: number;
+    host_profile: string;
+    filter_window_seconds: number;
+    maintenance_window_seconds: number;
+    dataset_quality_score: number;
+    dataset_quality_label: 'low' | 'medium' | 'high';
+    dataset_noise_label: 'clean' | 'stressed' | 'noisy';
+    weighted_event_pressure: number;
+    excluded_windows_count: number;
     updated_at: number;
     next_run_at: number | null;
   };
@@ -61,20 +72,28 @@ export const api = {
   processes: () => get<ProcessInfo[]>('/processes'),
   terminateProcess: (pid: number) => post<ProcessActionResult>('/processes/terminate', { pid }),
   forceKillProcess: (pid: number) => post<ProcessActionResult>('/processes/force-kill', { pid }),
-  logs: (source?: string, limit = 200, fromTs?: number | null, toTs?: number | null) => {
+  logs: ({ source, limit = 200, fromTs, toTs, query, ip, eventType }: LogFilters = {}) => {
     const params = new URLSearchParams({
       source: source || '',
       limit: String(limit),
     });
     if (fromTs != null) params.set('from_ts', String(fromTs));
     if (toTs != null) params.set('to_ts', String(toTs));
+    if (query) params.set('q', query);
+    if (ip) params.set('ip', ip);
+    if (eventType) params.set('event_type', eventType);
     return get<LogEntry[]>(`/logs?${params.toString()}`);
   },
   securityEvents: (eventType?: string, limit = 100) =>
     get<SecurityEvent[]>(`/security/events?event_type=${encodeURIComponent(eventType || '')}&limit=${limit}`),
+  securityIncidents: (eventType?: string, limit = 20) =>
+    get<SecurityIncident[]>(`/security/incidents?event_type=${encodeURIComponent(eventType || '')}&limit=${limit}`),
+  securityAudit: (traceId?: string, limit = 50) =>
+    get<ResponseAuditEntry[]>(`/security/audit?trace_id=${encodeURIComponent(traceId || '')}&limit=${limit}`),
   blockedIPs: () => get<BlockedIP[]>('/security/blocked'),
   blockIP: (ip: string, reason: string, duration?: number) =>
     post<{ status: string }>('/security/block', { ip, reason, duration }),
   unblockIP: (ip: string) => post<{ status: string }>('/security/unblock', { ip }),
   mlStatus: () => get<MlStatusResponse>('/ml/status'),
+  riskScore: () => get<RiskScore>('/risk'),
 };

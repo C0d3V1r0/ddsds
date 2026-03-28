@@ -16,6 +16,25 @@ agent:
     - /var/log/nginx/access.log
 security:
   auto_block: false
+  port_scan:
+    enabled: true
+    window: 240
+    unique_ports_threshold: 8
+    action: review
+  response_cooldown: 600
+  medium_escalation_window: 300
+  medium_escalation_threshold: 4
+ml:
+  log_classifier_min_confidence: 0.7
+  baseline_hours: 12
+  baseline_buffer_seconds: 240
+  min_clean_samples: 120
+  max_clean_events: 7
+  host_profile: database
+  maintenance_window_seconds: 600
+  maintenance_commands:
+    - restart_service
+    - kill_process
 api:
   require_bearer_auth: true
   require_ws_token: true
@@ -39,6 +58,21 @@ api:
         "/var/log/nginx/access.log",
     ]
     assert config.security.auto_block is False
+    assert config.security.port_scan.enabled is True
+    assert config.security.port_scan.window == 240
+    assert config.security.port_scan.unique_ports_threshold == 8
+    assert config.security.port_scan.action == "review"
+    assert config.security.response_cooldown == 600
+    assert config.security.medium_escalation_window == 300
+    assert config.security.medium_escalation_threshold == 4
+    assert config.ml.log_classifier_min_confidence == 0.7
+    assert config.ml.baseline_hours == 12
+    assert config.ml.baseline_buffer_seconds == 240
+    assert config.ml.min_clean_samples == 120
+    assert config.ml.max_clean_events == 7
+    assert config.ml.host_profile == "database"
+    assert config.ml.maintenance_window_seconds == 600
+    assert config.ml.maintenance_commands == ["restart_service", "kill_process"]
     assert config.api.require_bearer_auth is True
     assert config.api.require_ws_token is True
     assert config.api.token == "bearer-token"

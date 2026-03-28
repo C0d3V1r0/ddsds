@@ -13,10 +13,11 @@ import (
 
 // ProcessInfo — информация о процессе для отправки на сервер
 type ProcessInfo struct {
-	PID  int     `json:"pid"`
-	Name string  `json:"name"`
-	CPU  float64 `json:"cpu"`
-	RAM  uint64  `json:"ram"`
+	PID       int     `json:"pid"`
+	Name      string  `json:"name"`
+	CPU       float64 `json:"cpu"`
+	RAM       uint64  `json:"ram"`
+	StartTime uint64  `json:"start_time"`
 }
 
 // CLK_TCK вызываем через getconf один раз за весь runtime — это syscall, незачем дёргать каждый тик
@@ -72,6 +73,7 @@ func readProcessInfo(pid int) (*ProcessInfo, error) {
 
 	var rss uint64
 	var cpu float64
+	var startTime uint64
 
 	// RSS — поле 23 в /proc/pid/stat (индекс 21 относительно полей после имени)
 	if len(fields) > 21 {
@@ -83,7 +85,7 @@ func readProcessInfo(pid int) (*ProcessInfo, error) {
 	if len(fields) > 19 {
 		utime, _ := strconv.ParseUint(fields[11], 10, 64)
 		stime, _ := strconv.ParseUint(fields[12], 10, 64)
-		startTime, _ := strconv.ParseUint(fields[19], 10, 64)
+		startTime, _ = strconv.ParseUint(fields[19], 10, 64)
 
 		uptimeSeconds, err := readUptimeSeconds()
 		if err == nil {
@@ -94,7 +96,7 @@ func readProcessInfo(pid int) (*ProcessInfo, error) {
 			}
 		}
 	}
-	return &ProcessInfo{PID: pid, Name: name, CPU: cpu, RAM: rss}, nil
+	return &ProcessInfo{PID: pid, Name: name, CPU: cpu, RAM: rss, StartTime: startTime}, nil
 }
 
 func readUptimeSeconds() (float64, error) {

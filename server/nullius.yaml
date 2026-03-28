@@ -5,6 +5,8 @@ agent:
     - /var/log/auth.log
     - /var/log/nginx/access.log
     - /var/log/nginx/error.log
+    - /var/log/ufw.log
+    - /var/log/kern.log
 
 security:
   ssh_brute_force:
@@ -15,7 +17,15 @@ security:
   web_attacks:
     enabled: true
     action: block
+  port_scan:
+    enabled: true
+    window: 120
+    unique_ports_threshold: 12
+    action: review
   auto_block: true
+  response_cooldown: 900
+  medium_escalation_window: 900
+  medium_escalation_threshold: 3
   allowed_services:
     - nginx
     - postgresql
@@ -27,6 +37,17 @@ ml:
   anomaly_detection: true
   training_period: 86400
   sensitivity: medium
+  log_classifier_min_confidence: 0.6
+  baseline_hours: 24
+  baseline_buffer_seconds: 300
+  min_clean_samples: 100
+  max_clean_events: 10
+  host_profile: generic
+  maintenance_window_seconds: 900
+  maintenance_commands:
+    - restart_service
+    - kill_process
+    - force_kill_process
 
 api:
   require_bearer_auth: false

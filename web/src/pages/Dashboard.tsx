@@ -12,14 +12,12 @@ import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { LoadingBlock } from '../components/ui/StateBlock';
 import { t } from '../lib/i18n';
-import { formatDateTime, formatEventDescription, formatEventType, formatRelativeAge } from '../lib/format';
-import { useStore } from '../stores/store';
+import { formatConfidence, formatDateTime, formatEventDescription, formatEventExplanation, formatEventSource, formatEventType, formatRelativeAge, formatSignalSource } from '../lib/format';
 
 const MetricChart = lazy(async () => import('../components/metrics/MetricChart').then((module) => ({ default: module.MetricChart })));
 
 export function Dashboard() {
   useWebSocket();
-  const locale = useStore((state) => state.locale);
   const { data: metrics, isError: metricsError } = useMetrics();
   const { data: history, isError: historyError } = useMetricsHistory('1h');
   const { data: services, isError: servicesError } = useQuery({ queryKey: ['services'], queryFn: api.services, refetchInterval: 10000 });
@@ -113,10 +111,14 @@ export function Dashboard() {
                     {evt.description && (
                       <div className="mt-0.5 text-xs text-text-secondary/70">{formatEventDescription(evt.description, evt.type)}</div>
                     )}
+                    <div className="mt-0.5 text-xs text-text-secondary/70">{formatEventExplanation(evt)}</div>
+                    <div className="mt-1 text-[11px] text-text-secondary/60">
+                      {formatSignalSource(evt.signal_source)} • {formatConfidence(evt.confidence)}
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center justify-between gap-3 sm:block sm:text-right">
-                  <span className="text-xs text-text-secondary shrink-0">{evt.source_ip || (locale === 'ru' ? 'локально' : 'local')}</span>
+                  <span className="text-xs text-text-secondary shrink-0">{formatEventSource(evt.source_ip)}</span>
                   <div className="mt-0 sm:mt-1 text-[11px] text-text-secondary/70">{formatRelativeAge(evt.timestamp)}</div>
                 </div>
               </div>

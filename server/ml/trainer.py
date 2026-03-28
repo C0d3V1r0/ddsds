@@ -6,6 +6,7 @@ from pathlib import Path
 import aiosqlite
 
 from ml.anomaly import AnomalyDetector
+from ml.baseline import build_baseline_dataset
 from ml.classifier import AttackClassifier
 from ml.features import extract_metrics_features
 
@@ -26,9 +27,20 @@ _anomaly_status: dict[str, object] = {
     "status": "pending",
     "reason_code": "waiting_for_first_run",
     "samples_count": 0,
+    "filtered_samples_count": 0,
+    "discarded_samples_count": 0,
     "required_samples": MIN_TRAINING_SAMPLES,
     "event_count": 0,
     "max_event_count": MAX_EVENTS_CLEAN_BASELINE,
+    "maintenance_event_count": 0,
+    "host_profile": "generic",
+    "filter_window_seconds": 0,
+    "maintenance_window_seconds": 0,
+    "dataset_quality_score": 0,
+    "dataset_quality_label": "low",
+    "dataset_noise_label": "clean",
+    "weighted_event_pressure": 0,
+    "excluded_windows_count": 0,
     "updated_at": 0,
     "next_run_at": None,
 }
@@ -39,7 +51,20 @@ def _set_anomaly_status(
     reason_code: str,
     *,
     samples_count: int = 0,
+    filtered_samples_count: int = 0,
+    discarded_samples_count: int = 0,
+    required_samples: int = MIN_TRAINING_SAMPLES,
     event_count: int = 0,
+    max_event_count: int = MAX_EVENTS_CLEAN_BASELINE,
+    maintenance_event_count: int = 0,
+    host_profile: str = "generic",
+    filter_window_seconds: int = 0,
+    maintenance_window_seconds: int = 0,
+    dataset_quality_score: int = 0,
+    dataset_quality_label: str = "low",
+    dataset_noise_label: str = "clean",
+    weighted_event_pressure: int = 0,
+    excluded_windows_count: int = 0,
     next_run_at: int | None = None,
 ) -> None:
     global _anomaly_status
@@ -47,9 +72,20 @@ def _set_anomaly_status(
         "status": status,
         "reason_code": reason_code,
         "samples_count": samples_count,
-        "required_samples": MIN_TRAINING_SAMPLES,
+        "filtered_samples_count": filtered_samples_count,
+        "discarded_samples_count": discarded_samples_count,
+        "required_samples": required_samples,
         "event_count": event_count,
-        "max_event_count": MAX_EVENTS_CLEAN_BASELINE,
+        "max_event_count": max_event_count,
+        "maintenance_event_count": maintenance_event_count,
+        "host_profile": host_profile,
+        "filter_window_seconds": filter_window_seconds,
+        "maintenance_window_seconds": maintenance_window_seconds,
+        "dataset_quality_score": dataset_quality_score,
+        "dataset_quality_label": dataset_quality_label,
+        "dataset_noise_label": dataset_noise_label,
+        "weighted_event_pressure": weighted_event_pressure,
+        "excluded_windows_count": excluded_windows_count,
         "updated_at": int(time.time()),
         "next_run_at": next_run_at,
     }
@@ -105,7 +141,28 @@ async def init_models(db_path: str) -> None:
             _logger.info("Attack classifier обучен на базовом датасете")
 
 
-async def train_anomaly_from_db(db_path: str, hours: int = 24) -> bool:
+def _build_filter_windows(base_buffer_seconds: int) -> tuple[int, ...]:
+    """Строит каскад фильтров от строгого к мягкому вокруг security events."""
+    windows = {
+        max(30, int(base_buffer_seconds)),
+        max(30, int(base_buffer_seconds * 0.6)),
+        max(30, int(base_buffer_seconds * 0.4)),
+        max(30, int(base_buffer_seconds * 0.2)),
+    }
+    return tuple(sorted(windows, reverse=True))
+
+
+async def train_anomaly_from_db(
+    db_path: str,
+    *,
+    hours: int = 24,
+    min_samples: int = MIN_TRAINING_SAMPLES,
+    max_clean_events: int = MAX_EVENTS_CLEAN_BASELINE,
+    base_buffer_seconds: int = 300,
+    host_profile: str = "generic",
+    maintenance_window_seconds: int = 900,
+    maintenance_commands: tuple[str, ...] = ("restart_service", "kill_process", "force_kill_process"),
+) -> bool:
     """Обучает anomaly detector на метриках из БД за последние N часов"""
     _set_anomaly_status("training", "training_in_progress")
     cutoff = int(time.time()) - hours * 3600
@@ -118,41 +175,135 @@ async def train_anomaly_from_db(db_path: str, hours: int = 24) -> bool:
         )
         rows = await cursor.fetchall()
 
-    if len(rows) < MIN_TRAINING_SAMPLES:
+    if len(rows) < min_samples:
         _set_anomaly_status(
             "insufficient_data",
             "insufficient_data",
             samples_count=len(rows),
+            required_samples=min_samples,
+            max_event_count=max_clean_events,
+            host_profile=host_profile,
+            maintenance_window_seconds=maintenance_window_seconds,
         )
-        _logger.info(f"Недостаточно метрик для обучения: {len(rows)} (нужно минимум {MIN_TRAINING_SAMPLES})")
+        _logger.info(f"Недостаточно метрик для обучения: {len(rows)} (нужно минимум {min_samples})")
         return False
 
-    # Проверка на poisoned baseline: если много security-событий, отложить обучение
+    # Сначала считаем security events в окне, а потом пробуем вырезать загрязнённые интервалы.
     async with aiosqlite.connect(db_path) as conn:
         cursor = await conn.execute(
-            "SELECT COUNT(*) FROM security_events WHERE timestamp > ?",
+            "SELECT timestamp, type, severity, action_taken FROM security_events WHERE timestamp > ? ORDER BY timestamp ASC",
             (cutoff,)
         )
-        row = await cursor.fetchone()
-        event_count = row[0] if row else 0
+        event_rows = await cursor.fetchall()
+        maintenance_rows = []
+        if maintenance_commands:
+            placeholders = ",".join("?" for _ in maintenance_commands)
+            maintenance_cursor = await conn.execute(
+                f"SELECT timestamp FROM agent_commands WHERE timestamp > ? AND command IN ({placeholders}) ORDER BY timestamp ASC",
+                (cutoff, *maintenance_commands),
+            )
+            maintenance_rows = await maintenance_cursor.fetchall()
 
-    if event_count > MAX_EVENTS_CLEAN_BASELINE:
+    maintenance_timestamps = [int(row[0]) for row in maintenance_rows]
+    dataset = build_baseline_dataset(
+        rows,
+        event_rows,
+        maintenance_timestamps=maintenance_timestamps,
+        min_samples=min_samples,
+        max_clean_events=max_clean_events,
+        filter_windows=_build_filter_windows(base_buffer_seconds),
+        host_profile=host_profile,
+        maintenance_window_seconds=maintenance_window_seconds,
+    )
+
+    if dataset["reason_code"] == "poisoned_baseline":
         _set_anomaly_status(
             "postponed",
             "poisoned_baseline",
-            samples_count=len(rows),
-            event_count=event_count,
+            samples_count=dataset["total_samples"],
+            filtered_samples_count=dataset["clean_samples"],
+            discarded_samples_count=dataset["discarded_samples"],
+            required_samples=dataset["required_samples"],
+            event_count=dataset["event_count"],
+            max_event_count=dataset["max_clean_events"],
+            maintenance_event_count=dataset["maintenance_event_count"],
+            host_profile=dataset["host_profile"],
+            filter_window_seconds=dataset["filter_window_seconds"],
+            maintenance_window_seconds=dataset["maintenance_window_seconds"],
+            dataset_quality_score=dataset["quality_score"],
+            dataset_quality_label=dataset["quality_label"],
+            dataset_noise_label=dataset["noise_label"],
+            weighted_event_pressure=dataset["weighted_event_pressure"],
+            excluded_windows_count=dataset["excluded_windows_count"],
         )
-        _logger.warning(f"Poisoned baseline: {event_count} security-событий в окне обучения, пропускаем")
+        _logger.warning(
+            "Poisoned baseline: %s security-событий в окне обучения, даже после очистки clean dataset не сформирован",
+            dataset["event_count"],
+        )
         return False
 
-    data = [extract_metrics_features(dict(row)) for row in rows]
+    if dataset["reason_code"] == "ready_filtered_baseline":
+        _logger.info(
+            "Baseline очищен: использовано %s из %s метрик, отброшено %s, буфер %ss, quality=%s/%s",
+            dataset["clean_samples"],
+            dataset["total_samples"],
+            dataset["discarded_samples"],
+            dataset["filter_window_seconds"],
+            dataset["maintenance_event_count"],
+            dataset["quality_score"],
+            dataset["quality_label"],
+        )
+
+    training_rows = dataset["rows"]
+    if len(training_rows) < min_samples:
+        _set_anomaly_status(
+            "insufficient_data",
+            str(dataset["reason_code"]),
+            samples_count=dataset["total_samples"],
+            filtered_samples_count=dataset["clean_samples"],
+            discarded_samples_count=dataset["discarded_samples"],
+            required_samples=dataset["required_samples"],
+            event_count=dataset["event_count"],
+            max_event_count=dataset["max_clean_events"],
+            maintenance_event_count=dataset["maintenance_event_count"],
+            host_profile=dataset["host_profile"],
+            filter_window_seconds=dataset["filter_window_seconds"],
+            maintenance_window_seconds=dataset["maintenance_window_seconds"],
+            dataset_quality_score=dataset["quality_score"],
+            dataset_quality_label=dataset["quality_label"],
+            dataset_noise_label=dataset["noise_label"],
+            weighted_event_pressure=dataset["weighted_event_pressure"],
+            excluded_windows_count=dataset["excluded_windows_count"],
+        )
+        _logger.info(
+            "Недостаточно чистых метрик после подготовки baseline: %s из %s, quality=%s/%s",
+            len(training_rows),
+            min_samples,
+            dataset["quality_score"],
+            dataset["quality_label"],
+        )
+        return False
+
+    data = [extract_metrics_features(dict(row)) for row in training_rows]
     _anomaly_detector.train(data)
     _set_anomaly_status(
         "running",
-        "ready",
-        samples_count=len(rows),
-        event_count=event_count,
+        str(dataset["reason_code"]),
+        samples_count=dataset["total_samples"],
+        filtered_samples_count=dataset["clean_samples"],
+        discarded_samples_count=dataset["discarded_samples"],
+        required_samples=dataset["required_samples"],
+        event_count=dataset["event_count"],
+        max_event_count=dataset["max_clean_events"],
+        maintenance_event_count=dataset["maintenance_event_count"],
+        host_profile=dataset["host_profile"],
+        filter_window_seconds=dataset["filter_window_seconds"],
+        maintenance_window_seconds=dataset["maintenance_window_seconds"],
+        dataset_quality_score=dataset["quality_score"],
+        dataset_quality_label=dataset["quality_label"],
+        dataset_noise_label=dataset["noise_label"],
+        weighted_event_pressure=dataset["weighted_event_pressure"],
+        excluded_windows_count=dataset["excluded_windows_count"],
     )
 
     anomaly_path = MODELS_DIR / "anomaly.joblib"
@@ -168,9 +319,15 @@ async def train_anomaly_from_db(db_path: str, hours: int = 24) -> bool:
 
     await _record_model_version(
         db_path, "anomaly_detector", current_version + 1,
-        len(rows), 0.0, str(anomaly_path), _anomaly_detector.get_file_hash()
+        len(training_rows), 0.0, str(anomaly_path), _anomaly_detector.get_file_hash()
     )
-    _logger.info(f"Anomaly detector обучен на {len(rows)} записях метрик")
+    _logger.info(
+        "Anomaly detector обучен на %s clean samples из %s (quality=%s/%s)",
+        len(training_rows),
+        dataset["total_samples"],
+        dataset["quality_score"],
+        dataset["quality_label"],
+    )
     return True
 
 

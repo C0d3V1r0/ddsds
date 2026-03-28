@@ -100,13 +100,17 @@ func (e *Executor) Execute(ctx context.Context, command string, params map[strin
 		if pid <= 0 {
 			return "", fmt.Errorf("invalid pid: %v", params["pid"])
 		}
-		return killProcess(ctx, int(pid))
+		expectedName, _ := params["expected_name"].(string)
+		expectedStartTime, _ := params["expected_start_time"].(float64)
+		return killProcess(ctx, int(pid), expectedName, uint64(expectedStartTime))
 	case "force_kill_process":
 		pid, _ := params["pid"].(float64)
 		if pid <= 0 {
 			return "", fmt.Errorf("invalid pid: %v", params["pid"])
 		}
-		return forceKillProcess(int(pid))
+		expectedName, _ := params["expected_name"].(string)
+		expectedStartTime, _ := params["expected_start_time"].(float64)
+		return forceKillProcess(int(pid), expectedName, uint64(expectedStartTime))
 	case "restart_service":
 		name, _ := params["name"].(string)
 		if !ValidateService(name, e.AllowedServices) {

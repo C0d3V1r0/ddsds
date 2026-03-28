@@ -56,9 +56,9 @@ func main() {
 		func(id, command string, params map[string]interface{}) {
 			result, execErr := exec.Execute(ctx, command, params)
 			if execErr != nil {
-				client.SendResult(id, "error", execErr.Error())
+				client.SendResult(id, command, params, "error", execErr.Error())
 			} else {
-				client.SendResult(id, result, "")
+				client.SendResult(id, command, params, result, "")
 			}
 		},
 	)

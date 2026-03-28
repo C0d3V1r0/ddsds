@@ -24,3 +24,24 @@ WEB_ATTACK_PATTERNS = {
 
 # Извлечение IP из начала строки лога nginx/apache
 NGINX_LOG_IP_PATTERN = re.compile(r"^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})")
+
+# Firewall / kernel / UFW / nftables: эти записи позволяют увидеть сканирование портов
+# по числу уникальных destination ports в коротком временном окне.
+FIREWALL_SRC_PATTERNS = (
+    re.compile(r"\bSRC=(\d{1,3}(?:\.\d{1,3}){3})\b"),
+    re.compile(r"\bSRC=([0-9a-fA-F:]+)\b"),
+    re.compile(r"\bfrom\s+(\d{1,3}(?:\.\d{1,3}){3})\b", re.IGNORECASE),
+)
+FIREWALL_DEST_PORT_PATTERNS = (
+    re.compile(r"\bDPT=(\d{1,5})\b"),
+    re.compile(r"\bDSTPORT=(\d{1,5})\b", re.IGNORECASE),
+    re.compile(r"\bdport\s+(\d{1,5})\b", re.IGNORECASE),
+    re.compile(r"\bto\s+port\s+(\d{1,5})\b", re.IGNORECASE),
+)
+FIREWALL_LOG_MARKERS = (
+    "UFW BLOCK",
+    "UFW AUDIT",
+    "iptables",
+    "nftables",
+    "kernel:",
+)

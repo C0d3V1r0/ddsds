@@ -1,5 +1,6 @@
 # Классификатор атак: TF-IDF + LinearSVC
 import csv
+import math
 import joblib
 from sklearn.pipeline import Pipeline
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -44,8 +45,30 @@ class AttackClassifier:
         if not self._ready or self._pipeline is None:
             return {"label": "unknown", "confidence": 0.0}
 
-        prediction = self._pipeline.predict([text.lower()])[0]
-        return {"label": str(prediction), "confidence": 1.0}
+        normalized_text = text.lower()
+        prediction = self._pipeline.predict([normalized_text])[0]
+        confidence = self._predict_confidence(normalized_text)
+        return {"label": str(prediction), "confidence": confidence}
+
+    def _predict_confidence(self, text: str) -> float:
+        """Оценивает уверенность модели по отступу decision_function.
+
+        Для мультиклассовой задачи нам важен не абсолютный скор, а разрыв
+        между лучшим и вторым классом. Так мы получаем более честную оценку
+        силы сигнала без превращения LinearSVC в псевдо-probability модель.
+        """
+        if self._pipeline is None or not hasattr(self._pipeline, "decision_function"):
+            return 0.5
+
+        raw_scores = self._pipeline.decision_function([text])
+        if hasattr(raw_scores, "ndim") and raw_scores.ndim > 1:
+            scores = sorted((float(value) for value in raw_scores[0]), reverse=True)
+            margin = scores[0] - scores[1] if len(scores) > 1 else abs(scores[0])
+        else:
+            margin = abs(float(raw_scores[0]))
+
+        # Плавно нормализуем отступ до диапазона 0..1 без резких скачков.
+        return round(1.0 - math.exp(-max(margin, 0.0)), 3)
 
     def save(self, path: str) -> None:
         """Сохраняет pipeline на диск"""

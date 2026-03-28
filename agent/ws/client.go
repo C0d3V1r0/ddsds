@@ -194,13 +194,13 @@ func (c *Client) connect() error {
 			continue
 		}
 		if id, ok := msg["id"].(string); ok {
-			if !canExecuteCommand() {
-				log.Printf("Команда %s отклонена: превышен rate limit", id)
-				c.SendResult(id, "error", "rate limit exceeded")
-				continue
-			}
 			cmd, _ := msg["command"].(string)
 			params, _ := msg["params"].(map[string]interface{})
+			if !canExecuteCommand() {
+				log.Printf("Команда %s отклонена: превышен rate limit", id)
+				c.SendResult(id, cmd, params, "error", "rate limit exceeded")
+				continue
+			}
 			if c.onCommand != nil {
 				c.onCommand(id, cmd, params)
 			}
@@ -269,11 +269,13 @@ func (c *Client) Send(msg interface{}) error {
 	return err
 }
 
-// SendResult отправляет результат выполнения команды обратно на сервер
-func (c *Client) SendResult(id, status, errMsg string) {
-	result := map[string]string{
+// SendResult отправляет результат выполнения команды обратно на сервер.
+func (c *Client) SendResult(id, command string, params map[string]interface{}, status, errMsg string) {
+	result := map[string]interface{}{
 		"type":   "command_result",
 		"id":     id,
+		"command": command,
+		"params": params,
 		"status": status,
 	}
 	if errMsg != "" {

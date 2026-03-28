@@ -24,6 +24,11 @@ security:
   web_attacks:
     enabled: true
     action: block
+  port_scan:
+    enabled: true
+    window: 120
+    unique_ports_threshold: 4
+    action: review
   auto_block: true
   allowed_services:
     - nginx
@@ -57,6 +62,11 @@ security:
   web_attacks:
     enabled: true
     action: block
+  port_scan:
+    enabled: true
+    window: 120
+    unique_ports_threshold: 4
+    action: review
   auto_block: true
   allowed_services:
     - nginx

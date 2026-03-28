@@ -24,6 +24,7 @@ async def test_init_db_creates_tables(db_path):
     assert "services" in tables
     assert "ml_models" in tables
     assert "agent_commands" in tables
+    assert "response_audit" in tables
     assert "schema_version" in tables
 
 
@@ -41,6 +42,8 @@ async def test_schema_version_recorded(db_path):
         cursor = await conn.execute("SELECT version FROM schema_version")
         versions = [row[0] for row in await cursor.fetchall()]
     assert 1 in versions
+    assert 2 in versions
+    assert 3 in versions
 
 
 @pytest.mark.asyncio

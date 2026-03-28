@@ -8,6 +8,8 @@
   Проверяет system/API/functionality:
   health, metrics, services, processes, logs, security API, block/unblock IP,
   появление временного процесса и тестовой лог-записи.
+- `smoke/port_scan_smoke.py`
+  Проверяет runtime-детекцию сканирования портов как поведения, а не конкретного инструмента.
 - `../web/e2e/playwright.config.ts`
   Конфиг Playwright для проверки UI.
 - `../web/e2e/mvp.spec.ts`
@@ -19,6 +21,7 @@
 
 ```bash
 python3 testing/smoke/mvp_smoke.py
+NULLIUS_SCAN_TARGET_HOST=<ip_сервера> python3 testing/smoke/port_scan_smoke.py
 cd web && npm ci --include=dev && npx playwright test -c e2e/playwright.config.ts
 ```
 
@@ -46,6 +49,9 @@ sudo ./testing/run_release_acceptance.sh --destructive
 
 Особенности smoke:
 - `testing/smoke/mvp_smoke.py` ориентирован на установленный Nullius на Linux-хосте
+- `testing/smoke/port_scan_smoke.py` требует, чтобы firewall/kernel логи действительно писались на хосте и агент их читал
+- новый сценарий расследования логов лучше проверять руками через UI: `Security -> Related logs`, чтобы убедиться, что переход собирает корректные фильтры по IP, времени и типу события
+- для runtime port scan smoke задавай `NULLIUS_SCAN_TARGET_HOST` как адрес сервера, который реально попадёт в firewall/kernel лог
 - если запуск идёт не на Linux или `systemctl` недоступен, systemd-проверки будут пропущены с `WARN`
 - для финального MVP-вердикта лучше прогонять suite на целевом сервере, а не только на локальной машине разработки
 

@@ -11,7 +11,15 @@ class AgentConfig(BaseModel):
     processes_interval: int = 10
     server_url: str = "ws://127.0.0.1:8000/ws/agent"
     tls_skip_verify: bool = False
-    log_sources: list[str] = Field(default_factory=lambda: ["/var/log/auth.log"])
+    log_sources: list[str] = Field(
+        default_factory=lambda: [
+            "/var/log/auth.log",
+            "/var/log/nginx/access.log",
+            "/var/log/nginx/error.log",
+            "/var/log/ufw.log",
+            "/var/log/kern.log",
+        ]
+    )
 
 
 # Пороги и параметры детекции SSH brute force
@@ -28,11 +36,22 @@ class WebAttacksConfig(BaseModel):
     action: str = "block"
 
 
+class PortScanConfig(BaseModel):
+    enabled: bool = True
+    window: int = 120
+    unique_ports_threshold: int = 12
+    action: str = "review"
+
+
 # Политики безопасности: автоблокировка, разрешённые сервисы
 class SecurityConfig(BaseModel):
     ssh_brute_force: SSHBruteForceConfig = Field(default_factory=SSHBruteForceConfig)
     web_attacks: WebAttacksConfig = Field(default_factory=WebAttacksConfig)
+    port_scan: PortScanConfig = Field(default_factory=PortScanConfig)
     auto_block: bool = True
+    response_cooldown: int = 900
+    medium_escalation_window: int = 900
+    medium_escalation_threshold: int = 3
     allowed_services: list[str] = Field(
         default_factory=lambda: ["nginx", "postgresql", "redis", "mysql", "docker"]
     )
@@ -43,6 +62,16 @@ class MLConfig(BaseModel):
     anomaly_detection: bool = True
     training_period: int = 86400
     sensitivity: str = "medium"
+    log_classifier_min_confidence: float = 0.6
+    baseline_hours: int = 24
+    baseline_buffer_seconds: int = 300
+    min_clean_samples: int = 100
+    max_clean_events: int = 10
+    host_profile: str = "generic"
+    maintenance_window_seconds: int = 900
+    maintenance_commands: list[str] = Field(
+        default_factory=lambda: ["restart_service", "kill_process", "force_kill_process"]
+    )
 
 
 # Настройки REST API: аутентификация, CORS

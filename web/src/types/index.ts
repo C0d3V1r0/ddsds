@@ -23,6 +23,11 @@ export interface SecurityEvent {
   raw_log: string;
   action_taken: string;
   resolved: number;
+  signal_source?: string;
+  explanation_code?: string;
+  confidence?: 'low' | 'medium' | 'high';
+  recommended_action?: string;
+  trace_id?: string;
 }
 
 export interface BlockedIP {
@@ -32,6 +37,37 @@ export interface BlockedIP {
   blocked_at: number;
   expires_at: number | null;
   auto: number;
+}
+
+export interface SecurityIncident {
+  id: string;
+  title: string;
+  type: string;
+  source_ip: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  status: 'new' | 'investigating' | 'resolved';
+  event_count: number;
+  first_seen: number;
+  last_seen: number;
+  latest_event_id: number;
+  latest_trace_id?: string;
+  signal_source?: string;
+  confidence?: 'low' | 'medium' | 'high';
+  recommended_action?: string;
+  summary: string;
+}
+
+export interface ResponseAuditEntry {
+  id: number;
+  timestamp: number;
+  trace_id: string;
+  stage: string;
+  status: string;
+  event_type: string;
+  source_ip: string;
+  action: string;
+  command: string;
+  details: Record<string, unknown>;
 }
 
 export interface ServiceInfo {
@@ -47,6 +83,7 @@ export interface ProcessInfo {
   name: string;
   cpu: number;
   ram: number;
+  start_time?: number;
 }
 
 export interface ProcessActionResult {
@@ -62,8 +99,32 @@ export interface LogEntry {
   file: string;
 }
 
+export interface LogFilters {
+  source?: string;
+  limit?: number;
+  fromTs?: number | null;
+  toTs?: number | null;
+  query?: string;
+  ip?: string;
+  eventType?: string;
+}
+
 export interface HealthStatus {
   status: string;
   agent: string;
   db: string;
+}
+
+export interface RiskFactor {
+  code: string;
+  weight: number;
+  count?: number;
+  age_seconds?: number;
+}
+
+export interface RiskScore {
+  score: number;
+  level: 'low' | 'medium' | 'high' | 'critical';
+  factors: RiskFactor[];
+  updated_at: number;
 }
