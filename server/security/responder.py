@@ -1,12 +1,19 @@
 # Политика реакции на угрозы: чистая функция без скрытого состояния
 
 BLOCK_ON_FIRST_SEEN_TYPES = {"ssh_brute_force", "sqli"}
-ESCALATABLE_MEDIUM_TYPES = {"path_traversal", "xss", "port_scan"}
+ESCALATABLE_MEDIUM_TYPES = {
+    "path_traversal",
+    "xss",
+    "port_scan",
+    "ssh_user_enum",
+    "sensitive_path_probe",
+}
 
 
 def decide_response(
     event: dict,
     *,
+    operation_mode: str = "auto_defend",
     auto_block: bool = True,
     recent_events_count: int = 1,
     medium_escalation_threshold: int = 3,
@@ -16,6 +23,17 @@ def decide_response(
     event_type = str(event.get("type", ""))
     severity = str(event.get("severity", "low"))
     source_ip = str(event.get("source_ip", ""))
+    operation_mode = str(operation_mode or "auto_defend").strip().lower()
+
+    # Observe-режим принципиально пассивный: ничего не блокируем и не эскалируем.
+    if operation_mode == "observe":
+        return {"action": "log", "reason": "observe_mode"}
+
+    # Assist-режим сохраняет рекомендации оператору, но не делает auto-response.
+    if operation_mode == "assist":
+        if severity in ("medium", "high", "critical"):
+            return {"action": "review", "reason": "assist_mode"}
+        return {"action": "log", "reason": "log_only"}
 
     can_block = auto_block and bool(source_ip) and not cooldown_active
 

@@ -27,4 +27,5 @@ def test_merge_log_detection_falls_back_to_ml_when_rule_is_missing():
 
     assert event is not None
     assert event["description"] == "ML-detected: ssh_brute_force"
-    assert event["severity"] == "low"
+    assert event["severity"] == "medium"
+    assert event["source_ip"] == "10.0.0.8"

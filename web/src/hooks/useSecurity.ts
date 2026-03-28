@@ -10,10 +10,10 @@ function invalidateSecurityQueries(qc: ReturnType<typeof useQueryClient>, includ
   qc.invalidateQueries({ queryKey: ['securityIncidents'] });
 }
 
-export function useSecurityEvents(eventType?: string) {
+export function useSecurityEvents(eventType?: string, sourceIp?: string, limit = 100) {
   return useQuery({
-    queryKey: ['securityEvents', eventType],
-    queryFn: () => api.securityEvents(eventType),
+    queryKey: ['securityEvents', eventType, sourceIp, limit],
+    queryFn: () => api.securityEvents(eventType, sourceIp, limit),
     refetchInterval: SECURITY_REFRESH_MS,
   });
 }

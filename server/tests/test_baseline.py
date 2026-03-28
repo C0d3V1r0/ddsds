@@ -44,7 +44,7 @@ def test_builder_prefers_filtered_baseline_when_noise_is_present():
     assert dataset["weighted_event_pressure"] > dataset["event_count"]
 
 
-def test_builder_marks_insufficient_clean_data_when_best_subset_is_too_small():
+def test_builder_falls_back_to_best_effort_baseline_when_window_is_always_noisy():
     event_rows = [
         {"timestamp": 1_700_000_000 + index * 120, "type": "anomaly", "severity": "critical", "action_taken": "auto_block"}
         for index in range(50)
@@ -57,8 +57,8 @@ def test_builder_marks_insufficient_clean_data_when_best_subset_is_too_small():
         filter_windows=(300, 180, 120, 60),
     )
 
-    assert dataset["reason_code"] == "insufficient_clean_data"
-    assert 0 < dataset["clean_samples"] < 100
+    assert dataset["reason_code"] == "ready_best_effort_baseline"
+    assert dataset["clean_samples"] == 100
     assert dataset["discarded_samples"] > 0
     assert dataset["filter_window_seconds"] > 0
     assert dataset["quality_label"] in {"low", "medium"}

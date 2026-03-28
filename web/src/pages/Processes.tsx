@@ -1,5 +1,5 @@
 // Страница процессов: сортируемая таблица с поиском
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { Card } from '../components/ui/Card';
@@ -9,6 +9,7 @@ import type { ProcessInfo } from '../types';
 
 type SortKey = 'name' | 'cpu' | 'ram' | 'pid';
 type SortDir = 'asc' | 'desc';
+const PROCESSES_PER_PAGE = 10;
 
 // API возвращает ram в байтах, конвертируем в МБ для отображения
 function bytesToMb(bytes: number): number {
@@ -30,11 +31,13 @@ function isProtectedProcess(process: ProcessInfo) {
 }
 
 export function Processes() {
+  const confirmCardRef = useRef<HTMLDivElement | null>(null);
   const queryClient = useQueryClient();
   const { data: processes, isError: processesError, isLoading: processesLoading } = useQuery({ queryKey: ['processes'], queryFn: api.processes, refetchInterval: 5000 });
   const [sortKey, setSortKey] = useState<SortKey>('cpu');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
   const [selectedProcess, setSelectedProcess] = useState<ProcessInfo | null>(null);
   const [selectedAction, setSelectedAction] = useState<'terminate' | 'force-kill'>('terminate');
   const [actionNotice, setActionNotice] = useState<string>('');
@@ -54,6 +57,16 @@ export function Processes() {
       queryClient.invalidateQueries({ queryKey: ['processes'] });
     },
   });
+
+  useEffect(() => {
+    if (!selectedProcess || !confirmCardRef.current) return;
+    // После клика явно переводим пользователя к блоку подтверждения, чтобы действие не выглядело "немым".
+    confirmCardRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [selectedProcess]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, sortKey, sortDir]);
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -94,6 +107,12 @@ export function Processes() {
   const cpuColor = (v: number) => v > 80 ? 'text-accent-red' : v > 50 ? 'text-accent-yellow' : 'text-text-primary';
   // Пороги в МБ: >500 МБ красный, >200 МБ жёлтый
   const ramColor = (mb: number) => mb > 500 ? 'text-accent-red' : mb > 200 ? 'text-accent-yellow' : 'text-text-primary';
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PROCESSES_PER_PAGE));
+  const pagedProcesses = sorted.slice((page - 1) * PROCESSES_PER_PAGE, page * PROCESSES_PER_PAGE);
+
+  useEffect(() => {
+    setPage((current) => Math.min(current, totalPages));
+  }, [totalPages]);
 
   return (
     <div data-testid="page-processes" className="space-y-6">
@@ -134,11 +153,16 @@ export function Processes() {
                 </tr>
               </thead>
               <tbody>
-                {sorted.map((p) => {
+                {pagedProcesses.map((p) => {
                   const ramMb = bytesToMb(p.ram);
                   const protectedProcess = isProtectedProcess(p);
                   return (
-                    <tr key={p.pid} className="border-b border-border/30 hover:bg-bg-card-hover transition-colors">
+                    <tr
+                      key={p.pid}
+                      className={`border-b border-border/30 transition-colors ${
+                        selectedProcess?.pid === p.pid ? 'bg-bg-card-hover' : 'hover:bg-bg-card-hover'
+                      }`}
+                    >
                       <td className="py-2.5 px-4 text-text-secondary font-mono text-xs">{p.pid}</td>
                       <td className="py-2.5 px-4">{p.name}</td>
                       <td className={`py-2.5 px-4 font-mono ${cpuColor(p.cpu)}`}>{p.cpu.toFixed(1)}</td>
@@ -182,16 +206,40 @@ export function Processes() {
                     </tr>
                   );
                 })}
-                {sorted.length === 0 && (
+                {pagedProcesses.length === 0 && (
                   <tr><td colSpan={5} className="text-center py-8 text-text-secondary">{t.processes.noProcesses}</td></tr>
                 )}
               </tbody>
             </table>
           </div>
         )}
+        {!processesLoading && !processesError && sorted.length > PROCESSES_PER_PAGE && (
+          <div className="mt-4 flex items-center justify-between gap-3 text-sm text-text-secondary">
+            <span>{t.processes.page(page, totalPages)}</span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                disabled={page === 1}
+                className="rounded border border-border px-3 py-1.5 text-sm text-text-primary hover:bg-bg-card-hover disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {t.processes.previousPage}
+              </button>
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                disabled={page === totalPages}
+                className="rounded border border-border px-3 py-1.5 text-sm text-text-primary hover:bg-bg-card-hover disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {t.processes.nextPage}
+              </button>
+            </div>
+          </div>
+        )}
       </Card>
 
       {selectedProcess && (
+        <div ref={confirmCardRef}>
         <Card testId="processes-terminate-confirm" className={selectedAction === 'force-kill' ? 'border-accent-yellow/30' : 'border-accent-red/30'}>
           <div className="space-y-3">
             <div>
@@ -238,6 +286,7 @@ export function Processes() {
             </div>
           </div>
         </Card>
+        </div>
       )}
     </div>
   );

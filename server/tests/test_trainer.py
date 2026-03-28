@@ -87,7 +87,7 @@ async def test_trainer_uses_filtered_baseline_when_window_is_noisy(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_trainer_marks_insufficient_clean_data_when_noise_eats_window(tmp_path):
+async def test_trainer_uses_best_effort_baseline_when_noise_never_fully_clears(tmp_path):
     db_path = str(tmp_path / "trainer-insufficient-clean.db")
     await init_db(db_path)
 
@@ -100,12 +100,13 @@ async def test_trainer_marks_insufficient_clean_data_when_noise_eats_window(tmp_
 
     trained = await train_anomaly_from_db(db_path, hours=24)
 
-    assert trained is False
+    assert trained is True
     status = get_anomaly_status()
-    assert status["status"] == "insufficient_data"
-    assert status["reason_code"] == "insufficient_clean_data"
+    assert status["status"] == "running"
+    assert status["reason_code"] == "ready_best_effort_baseline"
     assert status["samples_count"] >= MIN_TRAINING_SAMPLES
-    assert 0 < status["filtered_samples_count"] < MIN_TRAINING_SAMPLES
+    assert status["filtered_samples_count"] >= MIN_TRAINING_SAMPLES
+    assert status["discarded_samples_count"] > 0
     assert status["filter_window_seconds"] > 0
     assert status["dataset_noise_label"] == "noisy"
 

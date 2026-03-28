@@ -9,7 +9,9 @@ from db import enqueue_write, get_db
 from api.logs import append_log
 from api.processes import update_processes
 from api import health
+from integrations.service import schedule_security_event_notifications
 from security.audit import append_response_audit, extract_audit_meta, make_trace_id, sanitize_command_params
+from security.mode import get_operation_mode
 
 _logger = logging.getLogger("nullius.ws.agent")
 
@@ -41,10 +43,17 @@ async def _load_response_context(event: dict, timestamp: int) -> dict[str, objec
     """Собирает минимальный контекст для response policy: повторяемость и cooldown."""
     source_ip = str(event.get("source_ip", "")).strip()
     if not source_ip or _config is None:
-        return {"recent_events_count": 1, "cooldown_active": False}
+        return {
+            "recent_events_count": 1,
+            "cooldown_active": False,
+            "currently_blocked": False,
+            "recent_duplicate": None,
+        }
 
     recent_events_count = 1
     cooldown_active = False
+    currently_blocked = False
+    recent_duplicate = None
     conn = await get_db()
     try:
         cursor = await conn.execute(
@@ -64,19 +73,73 @@ async def _load_response_context(event: dict, timestamp: int) -> dict[str, objec
         )
         blocked_row = await cursor.fetchone()
         if blocked_row:
+            currently_blocked = True
             blocked_at = int(blocked_row["blocked_at"] or 0)
             expires_at = blocked_row["expires_at"]
             cooldown_active = (
                 (expires_at is None and blocked_at >= timestamp - int(_config.response_cooldown))
                 or (expires_at is not None and int(expires_at) > timestamp)
             )
+
+        dedup_window = int(getattr(_config, "event_dedup_window", 300) or 300)
+        cursor = await conn.execute(
+            """
+            SELECT id, action_taken, timestamp, description
+            FROM security_events
+            WHERE type = ? AND source_ip = ? AND timestamp >= ?
+            ORDER BY timestamp DESC, id DESC
+            LIMIT 1
+            """,
+            (
+                str(event.get("type", "")),
+                source_ip,
+                timestamp - dedup_window,
+            ),
+        )
+        duplicate_row = await cursor.fetchone()
+        if duplicate_row:
+            recent_duplicate = {
+                "id": int(duplicate_row["id"]),
+                "action_taken": str(duplicate_row["action_taken"] or ""),
+                "timestamp": int(duplicate_row["timestamp"] or 0),
+                "description": str(duplicate_row["description"] or ""),
+            }
     finally:
         await conn.close()
 
     return {
         "recent_events_count": recent_events_count,
         "cooldown_active": cooldown_active,
+        "currently_blocked": currently_blocked,
+        "recent_duplicate": recent_duplicate,
     }
+
+
+def _should_suppress_followup_event(event: dict, response_context: dict[str, object]) -> bool:
+    """Подавляет шумные follow-up события от уже заблокированного IP.
+
+    Это нужно не для сокрытия атаки, а чтобы не плодить одинаковые алерты,
+    когда трафик уже дропается и оператору важнее видеть сам факт блокировки.
+    """
+    if not bool(response_context.get("currently_blocked")):
+        return False
+    return str(event.get("type", "")) == "port_scan"
+
+
+def _should_suppress_duplicate_event(
+    event: dict,
+    action_taken: str,
+    response_context: dict[str, object],
+) -> bool:
+    """Подавляет только близкие дубликаты с тем же действием, не ломая эскалацию."""
+    duplicate = response_context.get("recent_duplicate")
+    if not isinstance(duplicate, dict):
+        return False
+    if str(duplicate.get("action_taken", "")) != action_taken:
+        return False
+    if str(duplicate.get("description", "")) != str(event.get("description", "")):
+        return False
+    return True
 
 
 async def agent_ws_handler(ws: WebSocket, secret: str):
@@ -286,6 +349,7 @@ async def _handle_log(msg: dict):
     response_context = await _load_response_context(event, int(ts))
     action = decide_response(
         event,
+        operation_mode=get_operation_mode(),
         auto_block=bool(_config.auto_block) if _config else True,
         recent_events_count=int(response_context["recent_events_count"]),
         medium_escalation_threshold=int(_config.medium_escalation_threshold) if _config else 3,
@@ -323,11 +387,42 @@ async def _handle_log(msg: dict):
         action=action_taken,
         details={
             "policy_action": action["action"],
+            "operation_mode": get_operation_mode(),
             "recent_events_count": int(response_context["recent_events_count"]),
             "cooldown_active": bool(response_context["cooldown_active"]),
         },
         timestamp=ts,
     )
+    if _should_suppress_followup_event(event, response_context):
+        await append_response_audit(
+            trace_id=trace_id,
+            stage="decision",
+            status="suppressed",
+            event_type=str(event["type"]),
+            source_ip=str(event.get("source_ip", "")),
+            action=action_taken,
+            details={
+                "reason": "already_blocked_followup",
+                "recent_events_count": int(response_context["recent_events_count"]),
+            },
+            timestamp=ts,
+        )
+        return
+    if _should_suppress_duplicate_event(event, action_taken, response_context):
+        await append_response_audit(
+            trace_id=trace_id,
+            stage="decision",
+            status="suppressed_duplicate",
+            event_type=str(event["type"]),
+            source_ip=str(event.get("source_ip", "")),
+            action=action_taken,
+            details={
+                "reason": "recent_duplicate_event",
+                "existing_event_id": int(response_context["recent_duplicate"]["id"]),
+            },
+            timestamp=ts,
+        )
+        return
     await enqueue_write(
         "INSERT INTO security_events (timestamp, type, severity, source_ip, description, raw_log, action_taken, trace_id) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -356,6 +451,9 @@ async def _handle_log(msg: dict):
             "VALUES (?, ?, ?, ?, 1)",
             (action["ip"], event["description"], ts, ts + block_duration)
         )
+        schedule_security_event_notifications(event)
+    elif str(event.get("severity", "")) in {"high", "critical"}:
+        schedule_security_event_notifications(event)
     await broadcast({"type": "security_event", "data": event})
 
 

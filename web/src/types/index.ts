@@ -47,13 +47,17 @@ export interface SecurityIncident {
   severity: 'low' | 'medium' | 'high' | 'critical';
   status: 'new' | 'investigating' | 'resolved';
   event_count: number;
+  suppressed_count: number;
+  repeat_count: number;
   first_seen: number;
   last_seen: number;
   latest_event_id: number;
   latest_trace_id?: string;
+  latest_action_taken?: string;
   signal_source?: string;
   confidence?: 'low' | 'medium' | 'high';
   recommended_action?: string;
+  evidence_types: string[];
   summary: string;
 }
 
@@ -126,5 +130,37 @@ export interface RiskScore {
   score: number;
   level: 'low' | 'medium' | 'high' | 'critical';
   factors: RiskFactor[];
+  updated_at: number;
+}
+
+export interface RiskHistoryPoint {
+  timestamp: number;
+  score: number;
+  level: 'low' | 'medium' | 'high' | 'critical';
+  factors: RiskFactor[];
+}
+
+export interface SecurityModeSettings {
+  operation_mode: 'observe' | 'assist' | 'auto_defend';
+  updated_at: number;
+}
+
+export interface TelegramIntegrationSettings {
+  configured: boolean;
+  bot_username: string;
+  bot_name: string;
+  chat_bound: boolean;
+  chat_title: string;
+  notify_auto_block: boolean;
+  notify_high_severity: boolean;
+  last_error: string;
+  updated_at: number;
+}
+
+export interface SlackIntegrationSettings {
+  configured: boolean;
+  notify_auto_block: boolean;
+  notify_high_severity: boolean;
+  last_error: string;
   updated_at: number;
 }

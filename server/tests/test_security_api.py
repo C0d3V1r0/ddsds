@@ -40,6 +40,31 @@ async def test_get_security_events_with_filter(test_app):
     assert data[0]["confidence"] == "high"
     assert data[0]["recommended_action"] == "review_source_ip"
 
+
+@pytest.mark.asyncio
+async def test_get_security_events_with_source_ip_filter(test_app):
+    conn = await get_db()
+    now = int(time.time())
+    await conn.execute(
+        "INSERT INTO security_events (timestamp, type, severity, source_ip, description) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (now, "ssh_brute_force", "high", "10.0.0.1", "5 failed attempts")
+    )
+    await conn.execute(
+        "INSERT INTO security_events (timestamp, type, severity, source_ip, description) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (now, "ssh_brute_force", "high", "10.0.0.2", "5 failed attempts")
+    )
+    await conn.commit()
+    await conn.close()
+
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/api/security/events?event_type=ssh_brute_force&source_ip=10.0.0.2")
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0]["source_ip"] == "10.0.0.2"
+
 @pytest.mark.asyncio
 async def test_get_security_events_enriches_ml_detection(test_app):
     conn = await get_db()
@@ -125,6 +150,74 @@ async def test_get_security_incidents_groups_related_events(test_app):
     assert incident["event_count"] >= 2
     assert incident["status"] == "new"
     assert "latest_trace_id" in incident
+    assert incident["latest_action_taken"] == "auto_block"
+    assert incident["evidence_types"] == ["ssh_brute_force"]
+
+
+@pytest.mark.asyncio
+async def test_get_security_incidents_includes_repeat_and_suppressed_counts(test_app):
+    conn = await get_db()
+    now = int(time.time())
+    await conn.execute(
+        "INSERT INTO security_events (timestamp, type, severity, source_ip, description, action_taken) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (now - 30, "port_scan", "medium", "10.0.0.21", "12 unique destination ports probed in 120s", "auto_block")
+    )
+    await conn.execute(
+        "INSERT INTO security_events (timestamp, type, severity, source_ip, description, action_taken) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (now - 10, "port_scan", "medium", "10.0.0.21", "12 unique destination ports probed in 120s", "review_required")
+    )
+    await conn.execute(
+        "INSERT INTO response_audit (timestamp, trace_id, stage, status, event_type, source_ip, action, command, details) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (now - 5, "trace-suppressed", "decision", "suppressed", "port_scan", "10.0.0.21", "review_required", "", '{"reason":"already_blocked_followup"}')
+    )
+    await conn.execute(
+        "INSERT INTO response_audit (timestamp, trace_id, stage, status, event_type, source_ip, action, command, details) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (now - 4, "trace-duplicate", "decision", "suppressed_duplicate", "port_scan", "10.0.0.21", "review_required", "", '{"reason":"recent_duplicate_event"}')
+    )
+    await conn.commit()
+    await conn.close()
+
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/api/security/incidents?event_type=port_scan")
+    data = resp.json()
+    incident = next(item for item in data if item["type"] == "port_scan" and item["source_ip"] == "10.0.0.21")
+    assert incident["event_count"] == 2
+    assert incident["suppressed_count"] == 1
+    assert incident["repeat_count"] == 3
+
+
+@pytest.mark.asyncio
+async def test_get_security_incidents_builds_correlated_recon_chain(test_app):
+    conn = await get_db()
+    now = int(time.time())
+    await conn.execute(
+        "INSERT INTO security_events (timestamp, type, severity, source_ip, description, action_taken) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (now - 20, "scanner_probe", "medium", "10.0.0.44", "scanner_probe pattern detected", "review_required")
+    )
+    await conn.execute(
+        "INSERT INTO security_events (timestamp, type, severity, source_ip, description, action_taken) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (now - 10, "sensitive_path_probe", "medium", "10.0.0.44", "sensitive_path_probe pattern detected", "review_required")
+    )
+    await conn.commit()
+    await conn.close()
+
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/api/security/incidents")
+    data = resp.json()
+    incident = next(item for item in data if item["type"] == "recon_chain" and item["source_ip"] == "10.0.0.44")
+    assert incident["event_count"] == 2
+    assert incident["severity"] == "medium"
+    assert incident["confidence"] == "medium"
+    assert incident["recommended_action"] == "review_source_ip"
+    assert incident["evidence_types"] == ["scanner_probe", "sensitive_path_probe"]
 
 
 @pytest.mark.asyncio
@@ -169,6 +262,26 @@ async def test_get_blocked_ips(test_app):
     data = resp.json()
     assert len(data) == 1
     assert data[0]["ip"] == "192.168.1.100"
+
+
+@pytest.mark.asyncio
+async def test_get_security_mode_defaults(test_app):
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/api/security/mode")
+    assert resp.status_code == 200
+    assert resp.json()["operation_mode"] == "auto_defend"
+
+
+@pytest.mark.asyncio
+async def test_update_security_mode_persists_runtime_state(test_app):
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/api/security/mode", json={"operation_mode": "assist"})
+        assert resp.status_code == 200
+        follow_up = await client.get("/api/security/mode")
+    assert resp.json()["operation_mode"] == "assist"
+    assert follow_up.json()["operation_mode"] == "assist"
 
 @pytest.mark.asyncio
 async def test_block_ip_valid(test_app):

@@ -11,12 +11,14 @@ from fastapi import Depends, FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from config import load_config
 from db import init_db, start_writer, stop_writer
-from api import health, metrics, services, processes, logs, security
+from api import health, metrics, services, processes, logs, security, integrations
 from api import ml_status
 from api import risk
 from api.auth import require_auth, set_api_token
+from integrations.service import init_integrations_runtime, start_integrations_loops, stop_integrations_loops
 from ws.agent import agent_ws_handler, init_security
 from ws.frontend import frontend_ws_handler
+from security.mode import init_operation_mode
 from security.detector import Detector
 
 SECRET_TOKEN_BYTES = 32
@@ -44,17 +46,20 @@ def create_app(
 
     detector = Detector(config.security)
     init_security(detector, config.security, config.ml)
+    init_integrations_runtime(config)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         from tasks.retention import cleanup_old_data
         from tasks.expiry import expire_blocked_ips
         from ml.trainer import init_models, train_anomaly_from_db, _set_anomaly_status
+        from api.risk import capture_risk_snapshot
 
         global _writer_task, _bg_tasks
         await init_db(db_path)
         health.set_db_status(True)
         _writer_task = await start_writer(db_path)
+        await init_operation_mode(str(config.security.operation_mode))
 
         # Загрузка ML-моделей с диска или обучение classifier
         try:
@@ -79,6 +84,19 @@ def create_app(
                     await cleanup_old_data(db_path)
                 except Exception:
                     logging.getLogger("nullius").warning("Ошибка в retention loop", exc_info=True)
+
+        async def _risk_snapshot_loop():
+            snapshot_interval = max(60, int(config.risk.snapshot_interval))
+            try:
+                await capture_risk_snapshot(app)
+            except Exception:
+                logging.getLogger("nullius").warning("Ошибка первого risk snapshot", exc_info=True)
+            while True:
+                await asyncio.sleep(snapshot_interval)
+                try:
+                    await capture_risk_snapshot(app)
+                except Exception:
+                    logging.getLogger("nullius").warning("Ошибка в risk snapshot loop", exc_info=True)
 
         # Обучение anomaly detector: первый прогон не откладываем слишком надолго,
         # а дальнейший интервал берём из конфига, чтобы runtime был предсказуемым.
@@ -131,13 +149,16 @@ def create_app(
         _bg_tasks = [
             asyncio.create_task(_expiry_loop()),
             asyncio.create_task(_retention_loop()),
+            asyncio.create_task(_risk_snapshot_loop()),
             asyncio.create_task(_ml_training_loop()),
+            *start_integrations_loops(),
         ]
         yield
         for task in _bg_tasks:
             task.cancel()
         # Дожидаемся завершения отменённых задач перед остановкой writer
         await asyncio.gather(*_bg_tasks, return_exceptions=True)
+        await stop_integrations_loops()
         if _writer_task:
             await stop_writer(_writer_task)
 
@@ -201,6 +222,7 @@ def create_app(
     app.include_router(processes.router, dependencies=[Depends(require_auth)])
     app.include_router(logs.router, dependencies=[Depends(require_auth)])
     app.include_router(security.router, dependencies=[Depends(require_auth)])
+    app.include_router(integrations.router, dependencies=[Depends(require_auth)])
     app.include_router(ml_status.router, dependencies=[Depends(require_auth)])
     app.include_router(risk.router, dependencies=[Depends(require_auth)])
 

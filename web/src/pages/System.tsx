@@ -5,7 +5,24 @@ import { Badge } from '../components/ui/Badge';
 import { ErrorBlock, LoadingBlock, StateBlock } from '../components/ui/StateBlock';
 import { useStore } from '../stores/store';
 import { t } from '../lib/i18n';
-import { formatDateTime, formatRiskFactor, formatRiskLevel } from '../lib/format';
+import { formatDateTime, formatRiskExplanation, formatRiskFactor, formatRiskLevel, formatRiskTrend } from '../lib/format';
+
+function buildRiskSparklinePath(values: number[]) {
+  if (values.length < 2) return '';
+  const width = 220;
+  const height = 56;
+  const max = Math.max(...values, 1);
+  const min = Math.min(...values, 0);
+  const range = Math.max(1, max - min);
+
+  return values
+    .map((value, index) => {
+      const x = (index / (values.length - 1)) * width;
+      const y = height - ((value - min) / range) * height;
+      return `${index === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
+    })
+    .join(' ');
+}
 
 function getAnomalyReasonText(
   anomalyDetector: {
@@ -45,6 +62,12 @@ function getAnomalyReasonText(
         anomalyDetector.samples_count,
         anomalyDetector.filter_window_seconds,
       );
+    case 'ready_best_effort_baseline':
+      return t.system.mlReasonBestEffortBaseline(
+        anomalyDetector.filtered_samples_count,
+        anomalyDetector.samples_count,
+        anomalyDetector.weighted_event_pressure,
+      );
     case 'ready':
       return t.system.mlReasonReady(anomalyDetector.samples_count);
     case 'training_failed':
@@ -77,12 +100,17 @@ export function System() {
   const { data: health, isError: healthError, isLoading: healthLoading } = useQuery({ queryKey: ['health'], queryFn: api.health, refetchInterval: 5000 });
   const { data: mlStatus, isError: mlError, isLoading: mlLoading } = useQuery({ queryKey: ['mlStatus'], queryFn: api.mlStatus, refetchInterval: 10000 });
   const { data: riskScore, isError: riskError, isLoading: riskLoading } = useQuery({ queryKey: ['riskScore'], queryFn: api.riskScore, refetchInterval: 10000 });
+  const { data: riskHistory } = useQuery({ queryKey: ['riskHistory'], queryFn: () => api.riskHistory(), refetchInterval: 30000 });
   const locale = useStore((state) => state.locale);
 
   const anomalyDetector = mlStatus?.anomaly_detector;
   const anomalyStatus = anomalyDetector?.status ?? (anomalyDetector?.ready ? 'running' : 'pending');
   const classifierStatus = mlStatus?.attack_classifier?.ready ? 'running' : 'pending';
   const anomalyReason = getAnomalyReasonText(anomalyDetector);
+  const riskHistoryValues = (riskHistory ?? []).map((point) => point.score);
+  const riskSparkline = buildRiskSparklinePath(riskHistoryValues);
+  const previousRiskScore = riskHistory && riskHistory.length >= 2 ? riskHistory[riskHistory.length - 2].score : null;
+  const riskDelta = previousRiskScore == null || !riskScore ? 0 : riskScore.score - previousRiskScore;
 
   return (
     <div data-testid="page-system" className="space-y-6">
@@ -126,6 +154,40 @@ export function System() {
             <div className="flex items-end gap-3">
               <div className="text-4xl font-bold text-text-primary">{riskScore?.score ?? 0}</div>
               <div className="pb-1 text-sm text-text-secondary">{formatRiskLevel(riskScore?.level ?? 'low')}</div>
+            </div>
+            <div className="text-sm text-text-secondary">
+              {formatRiskTrend(riskHistory ?? [])}
+            </div>
+            {riskHistory && riskHistory.length > 1 ? (
+              <div className="space-y-2">
+                <div className="text-xs uppercase tracking-wider text-text-secondary">{t.system.riskTrend}</div>
+                <div className="rounded-lg border border-border bg-bg-primary/40 px-3 py-3">
+                  <div className="flex items-center justify-between gap-4">
+                    <svg viewBox="0 0 220 56" className="h-14 w-full max-w-[220px]" aria-hidden="true">
+                      <path
+                        d={riskSparkline}
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        className="text-accent-blue"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                    <div className="text-right">
+                      <div className={`text-sm font-medium ${riskDelta > 0 ? 'text-orange-300' : riskDelta < 0 ? 'text-accent-green' : 'text-text-secondary'}`}>
+                        {riskDelta > 0 ? `+${riskDelta}` : riskDelta}
+                      </div>
+                      <div className="text-xs text-text-secondary">{formatDateTime(riskHistory[riskHistory.length - 1].timestamp)}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-xs text-text-secondary">{t.system.riskHistoryEmpty}</div>
+            )}
+            <div className="max-w-2xl text-sm text-text-secondary">
+              {formatRiskExplanation(riskScore?.level ?? 'low', riskScore?.factors ?? [])}
             </div>
             <div className="space-y-2">
               {(riskScore?.factors ?? []).length === 0 ? (

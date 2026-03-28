@@ -1,5 +1,5 @@
 import { getCurrentLocale, getLocaleTag, t } from './i18n';
-import type { Metrics, ResponseAuditEntry, RiskFactor, SecurityEvent } from '../types';
+import type { Metrics, ResponseAuditEntry, RiskFactor, RiskHistoryPoint, SecurityEvent } from '../types';
 
 const BYTE_UNITS = ['byte', 'kilobyte', 'megabyte', 'gigabyte'] as const;
 
@@ -71,10 +71,14 @@ export function formatCurrentTime(date: Date) {
 export function formatEventType(value: string) {
   const map: Record<string, { ru: string; en: string }> = {
     ssh_brute_force: { ru: 'Подбор пароля по SSH', en: 'SSH brute force' },
+    ssh_user_enum: { ru: 'Перебор пользователей SSH', en: 'SSH user enumeration' },
     sqli: { ru: 'SQL injection', en: 'SQL injection' },
     xss: { ru: 'Cross-site scripting', en: 'Cross-site scripting' },
     path_traversal: { ru: 'Обход путей', en: 'Path traversal' },
+    sensitive_path_probe: { ru: 'Разведка чувствительных путей', en: 'Sensitive path probing' },
+    scanner_probe: { ru: 'Сканирующий инструмент', en: 'Scanner probe' },
     port_scan: { ru: 'Сканирование портов', en: 'Port scan' },
+    recon_chain: { ru: 'Коррелированная разведка', en: 'Correlated reconnaissance' },
     anomaly: { ru: 'Аномалия метрик', en: 'Metrics anomaly' },
   };
 
@@ -85,6 +89,10 @@ export function formatEventType(value: string) {
 export function formatEventDescription(description: string, type?: string) {
   const locale = getCurrentLocale();
   const normalizedType = type ? formatEventType(type) : '';
+  const portScanMatch = description.match(/^(\d+)\s+unique destination ports probed in\s+(\d+)s$/i);
+  const sshThresholdMatch = description.match(/^(\d+)\+\s+failed SSH attempts in\s+(\d+)s$/i);
+  const sshInvalidUsersMatch = description.match(/^(\d+)\+\s+invalid SSH users in\s+(\d+)s$/i);
+  const reconChainMatch = description.match(/^Correlated recon chain:\s+(.+)$/i);
 
   if (description.startsWith('ML-detected: ')) {
     const label = description.replace('ML-detected: ', '');
@@ -112,7 +120,35 @@ export function formatEventDescription(description: string, type?: string) {
       : `${normalizedType} pattern detected`;
   }
 
+  if (portScanMatch) {
+    const ports = Number(portScanMatch[1]);
+    const window = Number(portScanMatch[2]);
+    return t.security.eventPortScanDescription(ports, window);
+  }
+
+  if (sshThresholdMatch) {
+    const attempts = Number(sshThresholdMatch[1]);
+    const window = Number(sshThresholdMatch[2]);
+    return t.security.eventSshBruteforceDescription(attempts, window);
+  }
+
+  if (sshInvalidUsersMatch) {
+    const attempts = Number(sshInvalidUsersMatch[1]);
+    const window = Number(sshInvalidUsersMatch[2]);
+    return t.security.eventSshUserEnumDescription(attempts, window);
+  }
+
+  if (reconChainMatch) {
+    const rawTypes = reconChainMatch[1].split(',').map((item) => item.trim()).filter(Boolean);
+    const labels = rawTypes.map((item) => formatEventType(item)).join(', ');
+    return t.security.eventReconChainDescription(labels);
+  }
+
   return description;
+}
+
+export function formatBlockedReason(reason: string) {
+  return formatEventDescription(reason);
 }
 
 export function formatActionTaken(value: string) {
@@ -166,8 +202,14 @@ export function formatEventExplanation(event: Pick<SecurityEvent, 'explanation_c
   switch (event.explanation_code) {
     case 'ssh_failed_attempts_threshold':
       return t.security.explanationSshThreshold;
+    case 'ssh_invalid_user_threshold':
+      return t.security.explanationSshInvalidUserThreshold;
     case 'web_attack_pattern':
       return t.security.explanationWebAttackPattern;
+    case 'sensitive_path_probe':
+      return t.security.explanationSensitivePathProbe;
+    case 'scanner_tool_pattern':
+      return t.security.explanationScannerToolPattern;
     case 'rule_ml_confirmed':
       return t.security.explanationRuleMlConfirmed;
     case 'unique_destination_ports_threshold':
@@ -257,6 +299,44 @@ export function formatRiskFactor(factor: RiskFactor) {
     default:
       return factor.code;
   }
+}
+
+export function formatRiskExplanation(
+  level: 'low' | 'medium' | 'high' | 'critical',
+  factors: RiskFactor[],
+) {
+  if (factors.length === 0) {
+    return t.system.riskExplanationHealthy;
+  }
+
+  // Берём самые весомые причины, чтобы коротко объяснить текущий уровень риска.
+  const sortedFactors = [...factors].sort((left, right) => right.weight - left.weight);
+  const primary = formatRiskFactor(sortedFactors[0]);
+  const secondary = sortedFactors[1] ? formatRiskFactor(sortedFactors[1]) : '';
+
+  if (!secondary) {
+    return t.system.riskExplanationSingle(primary);
+  }
+
+  if (level === 'high' || level === 'critical') {
+    return t.system.riskExplanationDouble(primary, secondary);
+  }
+
+  return t.system.riskExplanationSingle(primary);
+}
+
+export function formatRiskTrend(history: RiskHistoryPoint[]) {
+  if (history.length < 2) {
+    return t.system.riskTrendStable;
+  }
+
+  const previous = history[Math.max(0, history.length - 2)];
+  const latest = history[history.length - 1];
+  const delta = latest.score - previous.score;
+
+  if (delta > 0) return t.system.riskTrendUp(delta);
+  if (delta < 0) return t.system.riskTrendDown(Math.abs(delta));
+  return t.system.riskTrendStable;
 }
 
 export function formatRelativeAge(timestamp?: number | null) {

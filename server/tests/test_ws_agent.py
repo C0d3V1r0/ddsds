@@ -4,8 +4,8 @@ import asyncio
 import pytest
 from starlette.testclient import TestClient
 from tests.conftest import TEST_AGENT_SECRET
-import db as db_module
-from db import get_db, start_writer, stop_writer
+from db import get_db
+from ws.agent import _handle_log
 
 
 @pytest.mark.asyncio
@@ -43,6 +43,9 @@ async def test_agent_ws_handles_ping(test_app):
 
 @pytest.mark.asyncio
 async def test_agent_ws_records_command_result_audit(test_app):
+    from db import start_writer, stop_writer
+    import db as db_module
+
     writer_task = await start_writer(db_module._db_path)
     client = TestClient(test_app)
     try:
@@ -88,3 +91,130 @@ async def test_agent_ws_records_command_result_audit(test_app):
     assert audit_row["stage"] == "command_result"
     assert audit_row["status"] == "success"
     assert audit_row["command"] == "block_ip"
+
+
+@pytest.mark.asyncio
+async def test_handle_log_suppresses_followup_port_scan_for_blocked_ip(test_app):
+    now = 1_800_000_000
+
+    async def direct_enqueue(sql: str, params: tuple[object, ...] = ()):
+        conn = await get_db()
+        try:
+            await conn.execute(sql, params)
+            await conn.commit()
+        finally:
+            await conn.close()
+
+    async def noop_broadcast(_event: dict):
+        return None
+
+    conn = await get_db()
+    try:
+        await conn.execute(
+            "INSERT INTO blocked_ips (ip, reason, blocked_at, expires_at, auto) VALUES (?, ?, ?, ?, ?)",
+            ("10.0.0.22", "existing block", now - 30, now + 3600, 1),
+        )
+        await conn.commit()
+    finally:
+        await conn.close()
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr("ws.agent.enqueue_write", direct_enqueue)
+    monkeypatch.setattr("security.audit.enqueue_write", direct_enqueue)
+    monkeypatch.setattr("ws.frontend.broadcast", noop_broadcast)
+
+    for port in (21, 22, 23, 25):
+        await _handle_log({
+            "timestamp": now + port,
+            "data": {
+                "source": "firewall",
+                "line": f"kernel: NULLIUS_PORTSCAN IN=eth0 OUT= SRC=10.0.0.22 DST=10.0.0.2 PROTO=TCP SPT=50000 DPT={port}",
+                "file": "/var/log/kern.log",
+            },
+        })
+    await asyncio.sleep(0.05)
+    monkeypatch.undo()
+
+    conn = await get_db()
+    try:
+        cursor = await conn.execute("SELECT COUNT(*) FROM security_events WHERE type = 'port_scan' AND source_ip = ?", ("10.0.0.22",))
+        events_count = int((await cursor.fetchone())[0])
+        cursor = await conn.execute(
+            "SELECT status FROM response_audit WHERE source_ip = ? AND event_type = 'port_scan' ORDER BY id DESC LIMIT 1",
+            ("10.0.0.22",),
+        )
+        audit_row = await cursor.fetchone()
+    finally:
+        await conn.close()
+
+    assert events_count == 0
+    assert audit_row["status"] == "suppressed"
+
+
+@pytest.mark.asyncio
+async def test_handle_log_suppresses_recent_duplicate_event(test_app):
+    now = 1_800_000_200
+
+    async def direct_enqueue(sql: str, params: tuple[object, ...] = ()):
+        conn = await get_db()
+        try:
+            await conn.execute(sql, params)
+            await conn.commit()
+        finally:
+            await conn.close()
+
+    async def noop_broadcast(_event: dict):
+        return None
+
+    class StubDetector:
+        def check_log(self, _log_entry: dict) -> dict:
+            return {
+                "type": "path_traversal",
+                "severity": "medium",
+                "source_ip": "10.0.0.44",
+                "description": "path_traversal pattern detected",
+                "raw_log": "raw",
+            }
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr("ws.agent.enqueue_write", direct_enqueue)
+    monkeypatch.setattr("security.audit.enqueue_write", direct_enqueue)
+    monkeypatch.setattr("ws.frontend.broadcast", noop_broadcast)
+    monkeypatch.setattr("ws.agent._detector", StubDetector())
+
+    await _handle_log({
+        "timestamp": now,
+        "data": {
+            "source": "nginx",
+            "line": "10.0.0.44 - - \"GET /../../etc/passwd\"",
+            "file": "/var/log/nginx/access.log",
+        },
+    })
+    await _handle_log({
+        "timestamp": now + 30,
+        "data": {
+            "source": "nginx",
+            "line": "10.0.0.44 - - \"GET /../../etc/passwd\"",
+            "file": "/var/log/nginx/access.log",
+        },
+    })
+    await asyncio.sleep(0.05)
+    monkeypatch.undo()
+
+    conn = await get_db()
+    try:
+        cursor = await conn.execute(
+            "SELECT COUNT(*) FROM security_events WHERE type = 'path_traversal' AND source_ip = ?",
+            ("10.0.0.44",),
+        )
+        events_count = int((await cursor.fetchone())[0])
+        cursor = await conn.execute(
+            "SELECT status FROM response_audit WHERE source_ip = ? AND event_type = 'path_traversal' ORDER BY id DESC LIMIT 1",
+            ("10.0.0.44",),
+        )
+        audit_row = await cursor.fetchone()
+    finally:
+        await conn.close()
+
+    assert events_count == 1
+    assert audit_row["status"] == "suppressed_duplicate"

@@ -8,6 +8,7 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field, field_validator
 from db import get_db, enqueue_write
 from security.audit import append_response_audit, make_trace_id
+from security.mode import get_operation_mode_state, normalize_operation_mode, set_operation_mode
 
 router = APIRouter()
 MAX_BLOCK_DURATION = 30 * 86400
@@ -42,6 +43,18 @@ class UnblockRequest(BaseModel):
         if not _validate_ip(ip):
             raise ValueError("Invalid IP address format")
         return ip
+
+
+class SecurityModeRequest(BaseModel):
+    operation_mode: str
+
+    @field_validator("operation_mode")
+    @classmethod
+    def validate_operation_mode(cls, value: str) -> str:
+        normalized = normalize_operation_mode(value)
+        if normalized != value.strip().lower():
+            raise ValueError("Invalid operation mode")
+        return normalized
 
 
 def _validate_ip(ip: str) -> bool:
@@ -93,11 +106,26 @@ def _enrich_security_event(row: dict[str, object]) -> dict[str, object]:
         explanation_code = "ssh_failed_attempts_threshold"
         confidence = "high"
         recommended_action = "review_source_ip"
+    elif event_type == "ssh_user_enum":
+        signal_source = "rule_auth_logs"
+        explanation_code = "ssh_invalid_user_threshold"
+        confidence = "medium"
+        recommended_action = "review_source_ip"
     elif event_type in {"sqli", "xss", "path_traversal"}:
         signal_source = "rule_web_logs"
         explanation_code = "web_attack_pattern"
         confidence = "high"
         recommended_action = "review_source_ip"
+    elif event_type == "sensitive_path_probe":
+        signal_source = "rule_web_logs"
+        explanation_code = "sensitive_path_probe"
+        confidence = "medium"
+        recommended_action = "review_related_logs"
+    elif event_type == "scanner_probe":
+        signal_source = "rule_web_logs"
+        explanation_code = "scanner_tool_pattern"
+        confidence = "medium"
+        recommended_action = "review_related_logs"
     elif event_type == "port_scan":
         signal_source = "rule_firewall_logs"
         explanation_code = "unique_destination_ports_threshold"
@@ -125,11 +153,28 @@ def _severity_rank(value: str) -> int:
     return {"low": 1, "medium": 2, "high": 3, "critical": 4}.get(value, 0)
 
 
-def _build_incidents(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+def _build_suppression_map(rows: list[dict[str, object]]) -> dict[tuple[str, str], dict[str, int]]:
+    grouped: dict[tuple[str, str], dict[str, int]] = defaultdict(lambda: {"suppressed_count": 0, "repeat_count": 0})
+    for row in rows:
+        event_type = str(row.get("event_type", ""))
+        source_key = str(row.get("source_ip", "")).strip() or "host"
+        status = str(row.get("status", ""))
+        if status == "suppressed":
+            grouped[(event_type, source_key)]["suppressed_count"] += 1
+            grouped[(event_type, source_key)]["repeat_count"] += 1
+        elif status == "suppressed_duplicate":
+            grouped[(event_type, source_key)]["repeat_count"] += 1
+    return grouped
+
+
+def _build_incidents(
+    rows: list[dict[str, object]],
+    suppression_map: dict[tuple[str, str], dict[str, int]] | None = None,
+) -> list[dict[str, object]]:
     """Группирует события в лёгкие инциденты без отдельной таблицы и лишней миграции."""
     grouped: dict[tuple[str, str], list[dict[str, object]]] = defaultdict(list)
-    for raw in rows:
-        event = _enrich_security_event(raw)
+    enriched_rows = [_enrich_security_event(raw) for raw in rows]
+    for event in enriched_rows:
         grouped[_incident_sort_key(event)].append(event)
 
     now = int(time.time())
@@ -138,6 +183,7 @@ def _build_incidents(rows: list[dict[str, object]]) -> list[dict[str, object]]:
         events.sort(key=lambda item: int(item.get("timestamp", 0)))
         first = events[0]
         last = events[-1]
+        suppression = (suppression_map or {}).get((event_type, source_key), {"suppressed_count": 0, "repeat_count": 0})
         severity = max((str(item.get("severity", "low")) for item in events), key=_severity_rank, default="low")
         all_resolved = all(int(item.get("resolved", 0) or 0) == 1 for item in events)
         if all_resolved:
@@ -155,17 +201,80 @@ def _build_incidents(rows: list[dict[str, object]]) -> list[dict[str, object]]:
             "severity": severity,
             "status": status,
             "event_count": len(events),
+            "suppressed_count": int(suppression["suppressed_count"]),
+            "repeat_count": max(0, len(events) - 1) + int(suppression["repeat_count"]),
             "first_seen": int(first.get("timestamp", 0) or 0),
             "last_seen": int(last.get("timestamp", 0) or 0),
             "latest_event_id": int(last.get("id", 0) or 0),
             "latest_trace_id": str(last.get("trace_id", "") or ""),
+            "latest_action_taken": str(last.get("action_taken", "logged") or "logged"),
             "signal_source": str(last.get("signal_source", "generic")),
             "confidence": str(last.get("confidence", "medium")),
             "recommended_action": str(last.get("recommended_action", "review_event")),
+            "evidence_types": sorted({str(item.get("type", "")) for item in events}),
             "summary": str(last.get("description", "")),
         })
 
+    incidents.extend(_build_correlated_recon_incidents(enriched_rows))
+
     incidents.sort(key=lambda item: (int(item["last_seen"]), _severity_rank(str(item["severity"]))), reverse=True)
+    return incidents
+
+
+def _build_correlated_recon_incidents(events: list[dict[str, object]]) -> list[dict[str, object]]:
+    """Собирает один зрелый recon-инцидент из нескольких слабых сигналов по одному IP.
+
+    Не заменяет исходные события, а даёт оператору более полезную агрегированную картину.
+    """
+    correlation_window = 900
+    recon_types = {"scanner_probe", "sensitive_path_probe", "port_scan", "ssh_user_enum"}
+    now = int(time.time())
+    by_source: dict[str, list[dict[str, object]]] = defaultdict(list)
+
+    for event in events:
+        source_ip = str(event.get("source_ip", "")).strip()
+        if not source_ip:
+            continue
+        if str(event.get("type", "")) not in recon_types:
+            continue
+        if int(event.get("timestamp", 0) or 0) < now - correlation_window:
+            continue
+        by_source[source_ip].append(event)
+
+    incidents: list[dict[str, object]] = []
+    for source_ip, source_events in by_source.items():
+        distinct_types = sorted({str(item.get("type", "")) for item in source_events})
+        if len(distinct_types) < 2:
+            continue
+
+        source_events.sort(key=lambda item: int(item.get("timestamp", 0) or 0))
+        first = source_events[0]
+        last = source_events[-1]
+        correlated_severity = "high" if "port_scan" in distinct_types and "ssh_user_enum" in distinct_types else "medium"
+        incidents.append({
+            "id": f"recon_chain:{source_ip}",
+            "title": "recon_chain",
+            "type": "recon_chain",
+            "source_ip": source_ip,
+            "severity": correlated_severity,
+            "status": "new",
+            "event_count": len(source_events),
+            "suppressed_count": 0,
+            "repeat_count": max(0, len(source_events) - len(distinct_types)),
+            "first_seen": int(first.get("timestamp", 0) or 0),
+            "last_seen": int(last.get("timestamp", 0) or 0),
+            "latest_event_id": int(last.get("id", 0) or 0),
+            "latest_trace_id": str(last.get("trace_id", "") or ""),
+            "latest_action_taken": str(last.get("action_taken", "logged") or "logged"),
+            "signal_source": "generic",
+            "confidence": "high" if len(distinct_types) >= 3 else "medium",
+            "recommended_action": "review_source_ip" if correlated_severity == "medium" else "auto_block_applied",
+            "evidence_types": distinct_types,
+            "summary": (
+                f"Correlated recon chain: {', '.join(distinct_types)}"
+            ),
+        })
+
     return incidents
 
 
@@ -173,6 +282,7 @@ def _build_incidents(rows: list[dict[str, object]]) -> list[dict[str, object]]:
 async def get_security_events(
     event_type: str = "",
     severity: str = "",
+    source_ip: str = "",
     limit: int = Query(default=100, ge=1, le=1000),
 ) -> list[dict[str, object]]:
     conn = await get_db()
@@ -185,6 +295,9 @@ async def get_security_events(
         if severity:
             query += " AND severity = ?"
             params.append(severity)
+        if source_ip:
+            query += " AND source_ip = ?"
+            params.append(source_ip)
         query += " ORDER BY timestamp DESC LIMIT ?"
         params.append(limit)
         cursor = await conn.execute(query, params)
@@ -210,7 +323,19 @@ async def get_security_incidents(
         query += " ORDER BY timestamp DESC LIMIT 500"
         cursor = await conn.execute(query, params)
         rows = [dict(row) for row in await cursor.fetchall()]
-        return _build_incidents(rows)[:limit]
+        min_timestamp = min((int(row.get("timestamp", 0) or 0) for row in rows), default=int(time.time()) - 900)
+        cursor = await conn.execute(
+            """
+            SELECT event_type, source_ip, status
+            FROM response_audit
+            WHERE timestamp >= ? AND stage = 'decision' AND status IN ('suppressed', 'suppressed_duplicate')
+            ORDER BY timestamp DESC
+            LIMIT 1000
+            """,
+            (min_timestamp,),
+        )
+        suppression_rows = [dict(row) for row in await cursor.fetchall()]
+        return _build_incidents(rows, _build_suppression_map(suppression_rows))[:limit]
     finally:
         await conn.close()
 
@@ -256,6 +381,16 @@ async def get_blocked_ips() -> list[dict[str, object]]:
         return [dict(row) for row in rows]
     finally:
         await conn.close()
+
+
+@router.get("/api/security/mode")
+async def get_security_mode() -> dict[str, object]:
+    return get_operation_mode_state()
+
+
+@router.post("/api/security/mode")
+async def update_security_mode(req: SecurityModeRequest) -> dict[str, object]:
+    return await set_operation_mode(req.operation_mode)
 
 
 @router.post("/api/security/block")

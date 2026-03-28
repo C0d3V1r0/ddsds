@@ -1,0 +1,14 @@
+[Unit]
+Description=Nullius backup snapshot
+After=network.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/bin/nullius-backup
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/nullius/backups /opt/nullius/data /opt/nullius/config
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes

@@ -5,6 +5,10 @@ import re
 SSH_FAILED_PATTERN = re.compile(
     r"Failed password.*from\s+(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"
 )
+SSH_INVALID_USER_PATTERN = re.compile(
+    r"Invalid user\s+\S+\s+from\s+(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})",
+    re.IGNORECASE,
+)
 
 # Веб-атаки: SQL-инъекции, XSS, обход путей
 WEB_ATTACK_PATTERNS = {
@@ -21,6 +25,14 @@ WEB_ATTACK_PATTERNS = {
         r"(\.\./|\.\.\\|%2e%2e%2f|%2e%2e/|\.\.%2f){2,}",
     ),
 }
+
+# Разведка веб-приложения: характерные чувствительные пути и инструменты сканирования.
+SENSITIVE_PATH_PATTERNS = (
+    re.compile(r"(?i)(/\.env\b|/\.git\b|/wp-admin\b|/wp-login\.php\b|/xmlrpc\.php\b|/phpmyadmin\b|/vendor/phpunit\b|/actuator\b|/server-status\b)"),
+)
+SCANNER_TOOL_PATTERNS = (
+    re.compile(r"(?i)\b(sqlmap|nikto|nmap|masscan|zgrab|wpscan|gobuster|dirbuster|dirb|whatweb)\b"),
+)
 
 # Извлечение IP из начала строки лога nginx/apache
 NGINX_LOG_IP_PATTERN = re.compile(r"^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})")

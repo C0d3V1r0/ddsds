@@ -11,6 +11,9 @@ from security.rules import (
     FIREWALL_SRC_PATTERNS,
     NGINX_LOG_IP_PATTERN,
     SSH_FAILED_PATTERN,
+    SSH_INVALID_USER_PATTERN,
+    SCANNER_TOOL_PATTERNS,
+    SENSITIVE_PATH_PATTERNS,
     WEB_ATTACK_PATTERNS,
 )
 
@@ -33,17 +36,31 @@ def detect_log_event(
 
 
 def detect_auth_rule(context: DetectionContext, state: dict, config: SecurityConfig) -> dict | None:
-    return detect_ssh_bruteforce(
+    ssh_bruteforce_event = detect_ssh_bruteforce(
         context["line"],
         ssh_attempts=state.setdefault("ssh_attempts", {}),
         threshold=config.ssh_brute_force.threshold,
         window=config.ssh_brute_force.window,
         now=context["now"],
     )
+    if ssh_bruteforce_event is not None:
+        return ssh_bruteforce_event
+
+    return detect_ssh_invalid_user(
+        context["line"],
+        invalid_user_attempts=state.setdefault("ssh_invalid_user_attempts", {}),
+        enabled=config.ssh_invalid_user.enabled,
+        threshold=config.ssh_invalid_user.threshold,
+        window=config.ssh_invalid_user.window,
+        now=context["now"],
+    )
 
 
 def detect_web_rule(context: DetectionContext, _state: dict, config: SecurityConfig) -> dict | None:
-    return detect_web_attack(context["line"], enabled=config.web_attacks.enabled)
+    web_attack_event = detect_web_attack(context["line"], enabled=config.web_attacks.enabled)
+    if web_attack_event is not None:
+        return web_attack_event
+    return detect_recon_probe(context["line"], enabled=config.recon_probes.enabled)
 
 
 def detect_port_scan_rule(context: DetectionContext, state: dict, config: SecurityConfig) -> dict | None:
@@ -89,6 +106,41 @@ def detect_ssh_bruteforce(
     return None
 
 
+def detect_ssh_invalid_user(
+    line: str,
+    *,
+    invalid_user_attempts: dict[str, list[int]],
+    enabled: bool,
+    threshold: int,
+    window: int,
+    now: int,
+) -> dict | None:
+    """Ловит SSH user enumeration: частые попытки входа под несуществующими пользователями."""
+    if not enabled:
+        return None
+
+    match = SSH_INVALID_USER_PATTERN.search(line)
+    if not match:
+        return None
+
+    ip = match.group(1)
+    invalid_user_attempts.setdefault(ip, []).append(now)
+    invalid_user_attempts[ip] = _filter_timestamps_in_window(invalid_user_attempts[ip], now=now, window=window)
+    _prune_stale_attempts(invalid_user_attempts, current_ip=ip, now=now, window=window)
+
+    if len(invalid_user_attempts[ip]) < threshold:
+        return None
+
+    invalid_user_attempts[ip] = []
+    return {
+        "type": "ssh_user_enum",
+        "severity": "medium",
+        "source_ip": ip,
+        "description": f"{threshold}+ invalid SSH users in {window}s",
+        "raw_log": line,
+    }
+
+
 def detect_web_attack(line: str, *, enabled: bool) -> dict | None:
     """Обнаружение веб-атак: SQLi, XSS, path traversal."""
     if not enabled:
@@ -105,6 +157,37 @@ def detect_web_attack(line: str, *, enabled: bool) -> dict | None:
                 "severity": severity,
                 "source_ip": source_ip,
                 "description": f"{attack_type} pattern detected",
+                "raw_log": line,
+            }
+
+    return None
+
+
+def detect_recon_probe(line: str, *, enabled: bool) -> dict | None:
+    """Ловит типичную веб-разведку: чувствительные пути и сигнатуры scanner tools."""
+    if not enabled:
+        return None
+
+    ip_match = NGINX_LOG_IP_PATTERN.search(line)
+    source_ip = ip_match.group(1) if ip_match else ""
+
+    for pattern in SENSITIVE_PATH_PATTERNS:
+        if pattern.search(line):
+            return {
+                "type": "sensitive_path_probe",
+                "severity": "medium",
+                "source_ip": source_ip,
+                "description": "sensitive_path_probe pattern detected",
+                "raw_log": line,
+            }
+
+    for pattern in SCANNER_TOOL_PATTERNS:
+        if pattern.search(line):
+            return {
+                "type": "scanner_probe",
+                "severity": "medium",
+                "source_ip": source_ip,
+                "description": "scanner_probe pattern detected",
                 "raw_log": line,
             }
 
@@ -225,6 +308,7 @@ DETECTION_RULES: tuple[DetectionRule, ...] = (
 class Detector:
     config: SecurityConfig
     ssh_attempts: dict[str, list[int]] = field(default_factory=lambda: defaultdict(list))
+    ssh_invalid_user_attempts: dict[str, list[int]] = field(default_factory=lambda: defaultdict(list))
     port_scan_attempts: dict[str, list[tuple[int, int]]] = field(default_factory=lambda: defaultdict(list))
 
     def check_log(self, log_entry: dict) -> dict | None:
@@ -234,6 +318,7 @@ class Detector:
             config=self.config,
             state={
                 "ssh_attempts": self.ssh_attempts,
+                "ssh_invalid_user_attempts": self.ssh_invalid_user_attempts,
                 "port_scan_attempts": self.port_scan_attempts,
             },
         )

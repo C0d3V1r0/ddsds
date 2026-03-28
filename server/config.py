@@ -43,12 +43,28 @@ class PortScanConfig(BaseModel):
     action: str = "review"
 
 
+class SSHInvalidUserConfig(BaseModel):
+    enabled: bool = True
+    threshold: int = 4
+    window: int = 300
+    action: str = "review"
+
+
+class ReconProbesConfig(BaseModel):
+    enabled: bool = True
+    action: str = "review"
+
+
 # Политики безопасности: автоблокировка, разрешённые сервисы
 class SecurityConfig(BaseModel):
     ssh_brute_force: SSHBruteForceConfig = Field(default_factory=SSHBruteForceConfig)
+    ssh_invalid_user: SSHInvalidUserConfig = Field(default_factory=SSHInvalidUserConfig)
     web_attacks: WebAttacksConfig = Field(default_factory=WebAttacksConfig)
+    recon_probes: ReconProbesConfig = Field(default_factory=ReconProbesConfig)
     port_scan: PortScanConfig = Field(default_factory=PortScanConfig)
+    operation_mode: str = "auto_defend"
     auto_block: bool = True
+    event_dedup_window: int = 300
     response_cooldown: int = 900
     medium_escalation_window: int = 900
     medium_escalation_threshold: int = 3
@@ -83,12 +99,18 @@ class APIConfig(BaseModel):
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
 
 
+class RiskConfig(BaseModel):
+    snapshot_interval: int = 300
+    history_points: int = 24
+
+
 # Корневой конфиг приложения, объединяет все секции
 class NulliusConfig(BaseModel):
     agent: AgentConfig = Field(default_factory=AgentConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)
     ml: MLConfig = Field(default_factory=MLConfig)
     api: APIConfig = Field(default_factory=APIConfig)
+    risk: RiskConfig = Field(default_factory=RiskConfig)
 
 
 def load_config(path: str) -> NulliusConfig:

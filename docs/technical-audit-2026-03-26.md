@@ -42,6 +42,8 @@
 - `port_scan` больше не является “висячим” типом события: добавлен реальный detector по firewall/kernel логам и end-to-end enrich/policy path
 - проведён отдельный `functional-first` refactor pass: detection/baseline pipeline избавлен от лишних data-only классов, а `processes API` и frontend security hooks стали менее связанными и проще для тестирования
 - добавлен `Response trail`: backend теперь хранит этапы `detected -> decision -> command_dispatched -> command_result`, а UI умеет показать эту цепочку для конкретного события или инцидента
+- risk score теперь поддерживает историю снапшотов и тренд, а не только текущее мгновенное значение
+- для single-server resilience добавлен встроенный backup-контур: `nullius-backup.timer` регулярно сохраняет БД и конфиг в `/opt/nullius/backups`
 
 ### Frontend / Performance
 

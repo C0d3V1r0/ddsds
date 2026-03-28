@@ -21,9 +21,17 @@ security:
     window: 60
     action: block
     block_duration: 3600
+  ssh_invalid_user:
+    enabled: true
+    threshold: 3
+    window: 60
+    action: review
   web_attacks:
     enabled: true
     action: block
+  recon_probes:
+    enabled: true
+    action: review
   port_scan:
     enabled: true
     window: 120
@@ -59,9 +67,17 @@ security:
     window: 60
     action: block
     block_duration: 3600
+  ssh_invalid_user:
+    enabled: true
+    threshold: 3
+    window: 60
+    action: review
   web_attacks:
     enabled: true
     action: block
+  recon_probes:
+    enabled: true
+    action: review
   port_scan:
     enabled: true
     window: 120
@@ -88,6 +104,17 @@ api:
 TEST_AGENT_SECRET = "test-secret-for-tests"
 TEST_API_TOKEN = "test-api-token-for-tests"
 TEST_WS_TOKEN = "test-ws-token-for-tests"
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def reset_runtime_security_mode():
+    from security import mode as security_mode
+
+    security_mode._operation_mode = "auto_defend"
+    security_mode._updated_at = 0
+    yield
+    security_mode._operation_mode = "auto_defend"
+    security_mode._updated_at = 0
 
 
 @pytest_asyncio.fixture

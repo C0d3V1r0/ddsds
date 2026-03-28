@@ -15,7 +15,16 @@ agent:
     - /var/log/auth.log
     - /var/log/nginx/access.log
 security:
+  operation_mode: assist
   auto_block: false
+  ssh_invalid_user:
+    enabled: true
+    threshold: 6
+    window: 420
+    action: review
+  recon_probes:
+    enabled: false
+    action: review
   port_scan:
     enabled: true
     window: 240
@@ -43,6 +52,9 @@ api:
   cors_origins:
     - http://localhost:3000
     - https://nullius.local
+risk:
+  snapshot_interval: 180
+  history_points: 16
 """
     )
 
@@ -58,6 +70,13 @@ api:
         "/var/log/nginx/access.log",
     ]
     assert config.security.auto_block is False
+    assert config.security.operation_mode == "assist"
+    assert config.security.ssh_invalid_user.enabled is True
+    assert config.security.ssh_invalid_user.threshold == 6
+    assert config.security.ssh_invalid_user.window == 420
+    assert config.security.ssh_invalid_user.action == "review"
+    assert config.security.recon_probes.enabled is False
+    assert config.security.recon_probes.action == "review"
     assert config.security.port_scan.enabled is True
     assert config.security.port_scan.window == 240
     assert config.security.port_scan.unique_ports_threshold == 8
@@ -81,3 +100,5 @@ api:
         "http://localhost:3000",
         "https://nullius.local",
     ]
+    assert config.risk.snapshot_interval == 180
+    assert config.risk.history_points == 16

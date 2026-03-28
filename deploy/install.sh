@@ -97,7 +97,7 @@ echo "  Архитектура: $ARCH"
 log_step "1/10" "Установка зависимостей..."
 
 apt-get update -qq
-apt-get install -y -qq nginx python3 python3-venv python3-pip openssl apache2-utils iptables > /dev/null
+apt-get install -y -qq nginx python3 python3-venv python3-pip openssl apache2-utils iptables sqlite3 > /dev/null
 
 # ============================================================
 # 2. Системный пользователь
@@ -119,6 +119,7 @@ fi
 log_step "3/10" "Создание директорий..."
 
 mkdir -p "$INSTALL_DIR"/{bin,config/tls,data,logs,server,web,models}
+mkdir -p "$INSTALL_DIR/backups"
 
 # ============================================================
 # 4. Установка Go агента
@@ -217,20 +218,30 @@ agent:
     - /var/log/kern.log
 
 security:
+  operation_mode: auto_defend
   ssh_brute_force:
     threshold: 5
     window: 300
     action: block
     block_duration: 86400
+  ssh_invalid_user:
+    enabled: true
+    threshold: 4
+    window: 300
+    action: review
   web_attacks:
     enabled: true
     action: block
+  recon_probes:
+    enabled: true
+    action: review
   port_scan:
     enabled: true
     window: 120
     unique_ports_threshold: 12
     action: review
   auto_block: true
+  event_dedup_window: 300
   response_cooldown: 900
   medium_escalation_window: 900
   medium_escalation_threshold: 3
@@ -262,6 +273,9 @@ api:
   require_ws_token: false
   token: ""
   ws_token: ""
+risk:
+  snapshot_interval: 300
+  history_points: 24
 YAML
     echo "  Создан nullius.yaml"
 else
@@ -316,6 +330,8 @@ log_step "9/10" "Настройка сервисов..."
 # Systemd units
 cp "$SCRIPT_DIR/nullius-agent.service" /etc/systemd/system/
 cp "$SCRIPT_DIR/nullius-api.service" /etc/systemd/system/
+cp "$SCRIPT_DIR/nullius-backup.service" /etc/systemd/system/
+cp "$SCRIPT_DIR/nullius-backup.timer" /etc/systemd/system/
 systemctl daemon-reload
 
 # Nginx
@@ -358,11 +374,14 @@ configure_port_scan_logging
 # Nullius CLI
 cp "$SCRIPT_DIR/nullius-ctl" /usr/local/bin/nullius-ctl
 chmod 755 /usr/local/bin/nullius-ctl
+cp "$SCRIPT_DIR/nullius-backup.sh" /usr/local/bin/nullius-backup
+chmod 755 /usr/local/bin/nullius-backup
 
 # Запуск сервисов
-systemctl enable nullius-api nullius-agent
+systemctl enable nullius-api nullius-agent nullius-backup.timer
 systemctl restart nullius-api
 systemctl restart nullius-agent
+systemctl restart nullius-backup.timer
 
 # ============================================================
 # 10. Logrotate

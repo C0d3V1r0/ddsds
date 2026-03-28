@@ -176,6 +176,42 @@ def build_baseline_dataset(
                 excluded_windows_count=len(event_intervals) + len(maintenance_intervals),
             )
 
+    # Если идеального clean window не нашлось, но сырых метрик уже достаточно,
+    # собираем best-effort baseline из наименее загрязнённых точек вместо вечного ожидания.
+    degraded_rows = _build_best_effort_rows(
+        maintenance_filtered_rows,
+        event_windows,
+        min_samples=effective_min_samples,
+    )
+    if len(degraded_rows) >= effective_min_samples:
+        degraded_quality = _compute_quality_score(
+            total_samples=total_samples,
+            clean_samples=len(degraded_rows),
+            weighted_event_pressure=weighted_event_pressure,
+            maintenance_event_count=maintenance_event_count,
+            min_samples=effective_min_samples,
+            max_clean_events=effective_max_clean_events,
+        )
+        return _baseline_dataset(
+            rows=degraded_rows,
+            total_samples=total_samples,
+            clean_samples=len(degraded_rows),
+            discarded_samples=total_samples - len(degraded_rows),
+            event_count=event_count,
+            maintenance_event_count=maintenance_event_count,
+            filter_window_seconds=best_window or min(filter_windows, default=0),
+            maintenance_window_seconds=maintenance_window_seconds,
+            quality_score=max(35, degraded_quality),
+            quality_label=_quality_label(max(35, degraded_quality)),
+            noise_label="noisy",
+            reason_code="ready_best_effort_baseline",
+            host_profile=host_profile,
+            required_samples=effective_min_samples,
+            max_clean_events=effective_max_clean_events,
+            weighted_event_pressure=weighted_event_pressure,
+            excluded_windows_count=max(best_intervals_count, len(maintenance_intervals)),
+        )
+
     if not best_rows:
         return _baseline_dataset(
             rows=[],
@@ -216,6 +252,49 @@ def build_baseline_dataset(
         weighted_event_pressure=weighted_event_pressure,
         excluded_windows_count=best_intervals_count,
     )
+
+
+def _build_best_effort_rows(
+    rows: list[aiosqlite.Row],
+    event_windows: list[dict[str, int | float]],
+    *,
+    min_samples: int,
+) -> list[aiosqlite.Row]:
+    if len(rows) < min_samples:
+        return []
+
+    scored_rows = [
+        (
+            _row_contamination_score(int(row["timestamp"]), event_windows),
+            int(row["timestamp"]),
+            row,
+        )
+        for row in rows
+    ]
+    scored_rows.sort(key=lambda item: (item[0], item[1]))
+    selected_rows = [row for _, _, row in scored_rows[:min_samples]]
+    selected_rows.sort(key=lambda row: int(row["timestamp"]))
+    return selected_rows
+
+
+def _row_contamination_score(
+    timestamp: int,
+    event_windows: list[dict[str, int | float]],
+) -> float:
+    if not event_windows:
+        return 0.0
+
+    score = 0.0
+    for event in event_windows:
+        center = int(event["timestamp"])
+        buffer_seconds = max(30, int(event["buffer_seconds"]))
+        distance = abs(timestamp - center)
+        if distance >= buffer_seconds:
+            continue
+        # Чем ближе точка к центру noisy window, тем сильнее штраф.
+        proximity = 1.0 - (distance / buffer_seconds)
+        score += float(event["weight"]) * proximity
+    return round(score, 6)
 
 
 def _build_event_windows(

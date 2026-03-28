@@ -54,7 +54,7 @@ def test_merge_log_detection_creates_ml_only_event_when_signal_is_strong():
     event = merge_log_detection(
         None,
         {"label": "xss", "confidence": 0.88},
-        raw_log="GET /search?q=<script>alert(1)</script>",
+        raw_log="198.51.100.24 - - [28/Mar/2026:12:00:00 +0000] \"GET /search?q=<script>alert(1)</script> HTTP/1.1\" 200 42",
         ml_min_confidence=0.6,
     )
 
@@ -62,3 +62,5 @@ def test_merge_log_detection_creates_ml_only_event_when_signal_is_strong():
     assert event["type"] == "xss"
     assert event["description"] == "ML-detected: xss"
     assert event["action_taken"] == "review_required"
+    assert event["source_ip"] == "198.51.100.24"
+    assert event["severity"] == "low"

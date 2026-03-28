@@ -1,5 +1,5 @@
 // HTTP-клиент для взаимодействия с backend API
-import type { HealthStatus, Metrics, ServiceInfo, ProcessInfo, ProcessActionResult, LogEntry, SecurityEvent, SecurityIncident, BlockedIP, RiskScore, LogFilters, ResponseAuditEntry } from '../types';
+import type { HealthStatus, Metrics, ServiceInfo, ProcessInfo, ProcessActionResult, LogEntry, SecurityEvent, SecurityIncident, BlockedIP, RiskScore, RiskHistoryPoint, LogFilters, ResponseAuditEntry, TelegramIntegrationSettings, SlackIntegrationSettings, SecurityModeSettings } from '../types';
 
 const BASE = import.meta.env.VITE_API_URL || '/api';
 const UI_TOKEN_STORAGE_KEY = 'nullius_api_token';
@@ -84,8 +84,10 @@ export const api = {
     if (eventType) params.set('event_type', eventType);
     return get<LogEntry[]>(`/logs?${params.toString()}`);
   },
-  securityEvents: (eventType?: string, limit = 100) =>
-    get<SecurityEvent[]>(`/security/events?event_type=${encodeURIComponent(eventType || '')}&limit=${limit}`),
+  securityEvents: (eventType?: string, sourceIp?: string, limit = 100) =>
+    get<SecurityEvent[]>(
+      `/security/events?event_type=${encodeURIComponent(eventType || '')}&source_ip=${encodeURIComponent(sourceIp || '')}&limit=${limit}`,
+    ),
   securityIncidents: (eventType?: string, limit = 20) =>
     get<SecurityIncident[]>(`/security/incidents?event_type=${encodeURIComponent(eventType || '')}&limit=${limit}`),
   securityAudit: (traceId?: string, limit = 50) =>
@@ -94,6 +96,26 @@ export const api = {
   blockIP: (ip: string, reason: string, duration?: number) =>
     post<{ status: string }>('/security/block', { ip, reason, duration }),
   unblockIP: (ip: string) => post<{ status: string }>('/security/unblock', { ip }),
+  securityMode: () => get<SecurityModeSettings>('/security/mode'),
+  saveSecurityMode: (operationMode: SecurityModeSettings['operation_mode']) =>
+    post<SecurityModeSettings>('/security/mode', { operation_mode: operationMode }),
   mlStatus: () => get<MlStatusResponse>('/ml/status'),
   riskScore: () => get<RiskScore>('/risk'),
+  riskHistory: (points = 24) => get<RiskHistoryPoint[]>(`/risk/history?points=${points}`),
+  telegramSettings: () => get<TelegramIntegrationSettings>('/integrations/telegram'),
+  saveTelegramSettings: (token: string, notifyAutoBlock: boolean, notifyHighSeverity: boolean) =>
+    post<TelegramIntegrationSettings>('/integrations/telegram', {
+      token,
+      notify_auto_block: notifyAutoBlock,
+      notify_high_severity: notifyHighSeverity,
+    }),
+  sendTelegramTest: () => post<{ status: string }>('/integrations/telegram/test'),
+  slackSettings: () => get<SlackIntegrationSettings>('/integrations/slack'),
+  saveSlackSettings: (webhookUrl: string, notifyAutoBlock: boolean, notifyHighSeverity: boolean) =>
+    post<SlackIntegrationSettings>('/integrations/slack', {
+      webhook_url: webhookUrl,
+      notify_auto_block: notifyAutoBlock,
+      notify_high_severity: notifyHighSeverity,
+    }),
+  sendSlackTest: () => post<{ status: string }>('/integrations/slack/test'),
 };

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Nullius backups every 6 hours
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=6h
+Persistent=true
+Unit=nullius-backup.service
+
+[Install]
+WantedBy=timers.target

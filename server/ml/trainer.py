@@ -237,7 +237,7 @@ async def train_anomaly_from_db(
             excluded_windows_count=dataset["excluded_windows_count"],
         )
         _logger.warning(
-            "Poisoned baseline: %s security-событий в окне обучения, даже после очистки clean dataset не сформирован",
+            "Poisoned baseline: %s security-событий в окне обучения, даже best-effort baseline не удалось собрать",
             dataset["event_count"],
         )
         return False
@@ -250,6 +250,15 @@ async def train_anomaly_from_db(
             dataset["discarded_samples"],
             dataset["filter_window_seconds"],
             dataset["maintenance_event_count"],
+            dataset["quality_score"],
+            dataset["quality_label"],
+        )
+    elif dataset["reason_code"] == "ready_best_effort_baseline":
+        _logger.info(
+            "Baseline собран в best-effort режиме: использовано %s из %s метрик, шум baseline=%s, quality=%s/%s",
+            dataset["clean_samples"],
+            dataset["total_samples"],
+            dataset["noise_label"],
             dataset["quality_score"],
             dataset["quality_label"],
         )

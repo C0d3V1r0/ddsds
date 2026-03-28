@@ -50,6 +50,7 @@ sudo ./testing/run_release_acceptance.sh --destructive
 Особенности smoke:
 - `testing/smoke/mvp_smoke.py` ориентирован на установленный Nullius на Linux-хосте
 - после переустановки через актуальный `install.sh` Nullius сама включает лёгкий logging hook для TCP SYN, поэтому `testing/smoke/port_scan_smoke.py` должен работать без ручного включения UFW
+- на установленном стенде теперь также работает `nullius-backup.timer`, который создаёт резервные копии БД и конфига в `/opt/nullius/backups`
 - новый сценарий расследования логов лучше проверять руками через UI: `Security -> Related logs`, чтобы убедиться, что переход собирает корректные фильтры по IP, времени и типу события
 - для runtime port scan smoke задавай `NULLIUS_SCAN_TARGET_HOST` как адрес сервера, который реально попадёт в firewall/kernel лог
 - если запуск идёт не на Linux или `systemctl` недоступен, systemd-проверки будут пропущены с `WARN`

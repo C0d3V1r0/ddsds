@@ -1,6 +1,13 @@
-# Тесты детектора угроз: SSH brute-force, веб-атаки и сканирование портов
+# Тесты детектора угроз: SSH brute-force, enumeration, веб-атаки и сканирование портов
 import pytest
-from security.detector import Detector, detect_port_scan, detect_ssh_bruteforce, detect_web_attack
+from security.detector import (
+    Detector,
+    detect_port_scan,
+    detect_recon_probe,
+    detect_ssh_bruteforce,
+    detect_ssh_invalid_user,
+    detect_web_attack,
+)
 from config import load_config
 
 @pytest.fixture
@@ -47,6 +54,20 @@ def test_ssh_different_ips_no_trigger(detector):
             results.append(result)
     assert len(results) == 0
 
+
+def test_ssh_invalid_user_above_threshold(detector):
+    result = None
+    for _ in range(3):
+        result = detector.check_log({
+            "source": "auth",
+            "line": "Invalid user deploy from 10.0.0.66 port 22",
+            "file": "/var/log/auth.log",
+        })
+    assert result is not None
+    assert result["type"] == "ssh_user_enum"
+    assert result["severity"] == "medium"
+    assert result["source_ip"] == "10.0.0.66"
+
 def test_sqli_detection(detector):
     result = detector.check_log({
         "source": "nginx",
@@ -73,6 +94,26 @@ def test_path_traversal_detection(detector):
     })
     assert result is not None
     assert result["type"] == "path_traversal"
+
+
+def test_sensitive_path_probe_detection(detector):
+    result = detector.check_log({
+        "source": "nginx",
+        "line": '10.0.0.7 - - "GET /.env HTTP/1.1" 404 "-" "curl/8.0"',
+        "file": "/var/log/nginx/access.log",
+    })
+    assert result is not None
+    assert result["type"] == "sensitive_path_probe"
+
+
+def test_scanner_probe_detection(detector):
+    result = detector.check_log({
+        "source": "nginx",
+        "line": '10.0.0.8 - - "GET / HTTP/1.1" 200 "-" "sqlmap/1.8"',
+        "file": "/var/log/nginx/access.log",
+    })
+    assert result is not None
+    assert result["type"] == "scanner_probe"
 
 def test_normal_log_no_detection(detector):
     result = detector.check_log({
@@ -137,6 +178,38 @@ def test_detect_web_attack_as_pure_function():
     )
     assert result is not None
     assert result["type"] == "path_traversal"
+
+
+def test_detect_ssh_invalid_user_as_pure_function():
+    invalid_user_attempts: dict[str, list[int]] = {}
+    result = None
+    for ts in (100, 110, 120):
+        result = detect_ssh_invalid_user(
+            "Invalid user admin from 10.0.0.16 port 22",
+            invalid_user_attempts=invalid_user_attempts,
+            enabled=True,
+            threshold=3,
+            window=60,
+            now=ts,
+        )
+    assert result is not None
+    assert result["type"] == "ssh_user_enum"
+    assert result["source_ip"] == "10.0.0.16"
+
+
+def test_detect_recon_probe_as_pure_function():
+    sensitive_result = detect_recon_probe(
+        '10.0.0.5 - - "GET /.git/config HTTP/1.1" 404 "-" "curl/8.0"',
+        enabled=True,
+    )
+    scanner_result = detect_recon_probe(
+        '10.0.0.5 - - "GET / HTTP/1.1" 200 "-" "Nikto/2.1.6"',
+        enabled=True,
+    )
+    assert sensitive_result is not None
+    assert sensitive_result["type"] == "sensitive_path_probe"
+    assert scanner_result is not None
+    assert scanner_result["type"] == "scanner_probe"
 
 
 def test_detect_port_scan_as_pure_function():

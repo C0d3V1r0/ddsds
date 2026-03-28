@@ -9,20 +9,30 @@ agent:
     - /var/log/kern.log
 
 security:
+  operation_mode: auto_defend
   ssh_brute_force:
     threshold: 5
     window: 300
     action: block
     block_duration: 86400
+  ssh_invalid_user:
+    enabled: true
+    threshold: 4
+    window: 300
+    action: review
   web_attacks:
     enabled: true
     action: block
+  recon_probes:
+    enabled: true
+    action: review
   port_scan:
     enabled: true
     window: 120
     unique_ports_threshold: 12
     action: review
   auto_block: true
+  event_dedup_window: 300
   response_cooldown: 900
   medium_escalation_window: 900
   medium_escalation_threshold: 3
@@ -56,3 +66,7 @@ api:
   ws_token: ""
   cors_origins:
     - http://localhost:3000
+
+risk:
+  snapshot_interval: 300
+  history_points: 24

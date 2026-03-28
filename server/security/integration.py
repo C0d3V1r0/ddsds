@@ -1,5 +1,6 @@
 # Интеграция сигналов детектора и ML в единый security event.
 # Здесь держим только функциональную логику без runtime-состояния.
+from security.rules import FIREWALL_SRC_PATTERNS, NGINX_LOG_IP_PATTERN, SSH_FAILED_PATTERN
 
 
 def merge_log_detection(
@@ -31,10 +32,11 @@ def merge_log_detection(
         return merged
 
     if strong_ml_event is not None:
+        confidence = float(strong_ml_event["confidence"])
         return {
             "type": strong_ml_event["label"],
-            "severity": "low",
-            "source_ip": "",
+            "severity": _ml_only_severity(confidence),
+            "source_ip": _extract_source_ip(raw_log),
             "description": f"ML-detected: {strong_ml_event['label']}",
             "raw_log": raw_log,
             "action_taken": "review_required",
@@ -64,3 +66,25 @@ def _boost_severity(severity: str) -> str:
     except ValueError:
         return severity
     return order[min(index + 1, len(order) - 1)]
+
+
+def _ml_only_severity(confidence: float) -> str:
+    if confidence >= 0.9:
+        return "medium"
+    return "low"
+
+
+def _extract_source_ip(raw_log: str) -> str:
+    auth_match = SSH_FAILED_PATTERN.search(raw_log)
+    if auth_match:
+        return str(auth_match.group(1))
+
+    nginx_match = NGINX_LOG_IP_PATTERN.search(raw_log)
+    if nginx_match:
+        return str(nginx_match.group(1))
+
+    for pattern in FIREWALL_SRC_PATTERNS:
+        firewall_match = pattern.search(raw_log)
+        if firewall_match:
+            return str(firewall_match.group(1))
+    return ""
