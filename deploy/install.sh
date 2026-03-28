@@ -31,6 +31,33 @@ refresh_dir_contents() {
         -exec rm -rf {} +
 }
 
+configure_port_scan_logging() {
+    # Включаем лёгкий системный hook для логирования новых TCP SYN-попыток.
+    # Это даёт Nullius реальные сигналы о сканировании портов без ручной настройки UFW.
+    if ! command -v iptables >/dev/null 2>&1; then
+        echo "  ВНИМАНИЕ: iptables не найден, out-of-the-box детекция port scan будет ограничена"
+        return
+    fi
+
+    iptables -N NULLIUS_PORTSCAN_LOG 2>/dev/null || true
+    iptables -F NULLIUS_PORTSCAN_LOG
+    iptables -A NULLIUS_PORTSCAN_LOG -m limit --limit 20/second --limit-burst 40 \
+        -j LOG --log-prefix "NULLIUS_PORTSCAN " --log-level 4
+    iptables -A NULLIUS_PORTSCAN_LOG -j RETURN
+    iptables -C INPUT -p tcp --syn -m conntrack --ctstate NEW -j NULLIUS_PORTSCAN_LOG 2>/dev/null \
+        || iptables -I INPUT 1 -p tcp --syn -m conntrack --ctstate NEW -j NULLIUS_PORTSCAN_LOG
+
+    if command -v ip6tables >/dev/null 2>&1; then
+        ip6tables -N NULLIUS_PORTSCAN_LOG 2>/dev/null || true
+        ip6tables -F NULLIUS_PORTSCAN_LOG
+        ip6tables -A NULLIUS_PORTSCAN_LOG -m limit --limit 20/second --limit-burst 40 \
+            -j LOG --log-prefix "NULLIUS_PORTSCAN " --log-level 4
+        ip6tables -A NULLIUS_PORTSCAN_LOG -j RETURN
+        ip6tables -C INPUT -p tcp --syn -m conntrack --ctstate NEW -j NULLIUS_PORTSCAN_LOG 2>/dev/null \
+            || ip6tables -I INPUT 1 -p tcp --syn -m conntrack --ctstate NEW -j NULLIUS_PORTSCAN_LOG
+    fi
+}
+
 # ============================================================
 # Проверки перед установкой
 # ============================================================
@@ -70,7 +97,7 @@ echo "  Архитектура: $ARCH"
 log_step "1/10" "Установка зависимостей..."
 
 apt-get update -qq
-apt-get install -y -qq nginx python3 python3-venv python3-pip openssl apache2-utils > /dev/null
+apt-get install -y -qq nginx python3 python3-venv python3-pip openssl apache2-utils iptables > /dev/null
 
 # ============================================================
 # 2. Системный пользователь
@@ -324,6 +351,9 @@ fi
 
 nginx -t 2>/dev/null || echo "  ВНИМАНИЕ: nginx config test failed"
 systemctl reload nginx 2>/dev/null || systemctl start nginx
+
+# Системный logging hook для детекции port scan из коробки.
+configure_port_scan_logging
 
 # Nullius CLI
 cp "$SCRIPT_DIR/nullius-ctl" /usr/local/bin/nullius-ctl

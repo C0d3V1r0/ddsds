@@ -186,3 +186,20 @@ def test_detect_port_scan_with_iptables_log_prefix():
         )
     assert result is not None
     assert result["type"] == "port_scan"
+
+
+def test_detect_port_scan_with_nullius_logging_prefix():
+    scan_attempts: dict[str, list[tuple[int, int]]] = {}
+    result = None
+    for ts, port in ((100, 22), (110, 80), (120, 443), (130, 8080)):
+        result = detect_port_scan(
+            f"kernel: [100.000] NULLIUS_PORTSCAN IN=eth0 OUT= SRC=10.0.0.15 DST=10.0.0.2 PROTO=TCP SPT=51000 DPT={port}",
+            scan_attempts=scan_attempts,
+            enabled=True,
+            threshold=4,
+            window=120,
+            now=ts,
+        )
+    assert result is not None
+    assert result["type"] == "port_scan"
+    assert result["source_ip"] == "10.0.0.15"

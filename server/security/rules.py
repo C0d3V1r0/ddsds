@@ -43,5 +43,6 @@ FIREWALL_LOG_MARKERS = (
     "UFW AUDIT",
     "iptables",
     "nftables",
+    "NULLIUS_PORTSCAN",
     "kernel:",
 )

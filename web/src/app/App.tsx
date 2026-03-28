@@ -6,6 +6,7 @@ import { Sidebar } from '../components/ui/Sidebar';
 import { Header } from '../components/ui/Header';
 import { connectWS, disconnectWS } from '../lib/ws';
 import { useSystemStatus } from '../hooks/useSystemStatus';
+import { useWebSocket } from '../hooks/useWebSocket';
 import { useStore } from '../stores/store';
 import { setLocaleMessages, t } from '../lib/i18n';
 
@@ -37,6 +38,7 @@ function RouteFallback() {
 
 function AppShell() {
   useSystemStatus();
+  useWebSocket();
   const locale = useStore((state) => state.locale);
 
   // WS подключаем при монтировании, отключаем при размонтировании

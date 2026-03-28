@@ -12,6 +12,19 @@ kill_matching_processes() {
     pkill -9 -f "$pattern" 2>/dev/null || true
 }
 
+remove_port_scan_logging() {
+    if command -v iptables >/dev/null 2>&1; then
+        iptables -D INPUT -p tcp --syn -m conntrack --ctstate NEW -j NULLIUS_PORTSCAN_LOG 2>/dev/null || true
+        iptables -F NULLIUS_PORTSCAN_LOG 2>/dev/null || true
+        iptables -X NULLIUS_PORTSCAN_LOG 2>/dev/null || true
+    fi
+    if command -v ip6tables >/dev/null 2>&1; then
+        ip6tables -D INPUT -p tcp --syn -m conntrack --ctstate NEW -j NULLIUS_PORTSCAN_LOG 2>/dev/null || true
+        ip6tables -F NULLIUS_PORTSCAN_LOG 2>/dev/null || true
+        ip6tables -X NULLIUS_PORTSCAN_LOG 2>/dev/null || true
+    fi
+}
+
 # Полное удаление Nullius
 echo "=== Удаление Nullius ==="
 
@@ -45,6 +58,9 @@ rm -f /etc/nginx/sites-available/nullius
 rm -f /etc/nginx/conf.d/nullius-limits.conf
 rm -f /etc/nginx/snippets/nullius-agent-allowlist.conf
 nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null || true
+
+log_step "4.1/8" "Удаление системного hook для port scan..."
+remove_port_scan_logging
 
 log_step "5/8" "Удаление logrotate и CLI..."
 rm -f /etc/logrotate.d/nullius

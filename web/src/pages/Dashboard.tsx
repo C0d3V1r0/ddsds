@@ -3,7 +3,6 @@ import { lazy, Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useMetrics, useMetricsHistory } from '../hooks/useMetrics';
-import { useWebSocket } from '../hooks/useWebSocket';
 import { CpuCard } from '../components/metrics/CpuCard';
 import { RamCard } from '../components/metrics/RamCard';
 import { DiskCard } from '../components/metrics/DiskCard';
@@ -17,7 +16,6 @@ import { formatConfidence, formatDateTime, formatEventDescription, formatEventEx
 const MetricChart = lazy(async () => import('../components/metrics/MetricChart').then((module) => ({ default: module.MetricChart })));
 
 export function Dashboard() {
-  useWebSocket();
   const { data: metrics, isError: metricsError } = useMetrics();
   const { data: history, isError: historyError } = useMetricsHistory('1h');
   const { data: services, isError: servicesError } = useQuery({ queryKey: ['services'], queryFn: api.services, refetchInterval: 10000 });
