@@ -4,6 +4,7 @@ import asyncio
 import pytest
 from starlette.testclient import TestClient
 from tests.conftest import TEST_AGENT_SECRET
+from deployment import init_deployment_role
 from db import get_db
 from ws.agent import _handle_log
 
@@ -218,3 +219,66 @@ async def test_handle_log_suppresses_recent_duplicate_event(test_app):
 
     assert events_count == 1
     assert audit_row["status"] == "suppressed_duplicate"
+
+
+@pytest.mark.asyncio
+async def test_handle_log_downgrades_active_response_on_standby(test_app):
+    now = 1_800_000_300
+
+    async def direct_enqueue(sql: str, params: tuple[object, ...] = ()):
+        conn = await get_db()
+        try:
+            await conn.execute(sql, params)
+            await conn.commit()
+        finally:
+            await conn.close()
+
+    async def noop_broadcast(_event: dict):
+        return None
+
+    class StubDetector:
+        def check_log(self, _log_entry: dict) -> dict:
+            return {
+                "type": "ssh_brute_force",
+                "severity": "high",
+                "source_ip": "10.0.0.55",
+                "description": "ssh brute force detected",
+                "raw_log": "raw",
+            }
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr("ws.agent.enqueue_write", direct_enqueue)
+    monkeypatch.setattr("security.audit.enqueue_write", direct_enqueue)
+    monkeypatch.setattr("ws.frontend.broadcast", noop_broadcast)
+    monkeypatch.setattr("ws.agent._detector", StubDetector())
+
+    init_deployment_role("standby", "standby-test-node", "/tmp/nullius-standby-test.lock")
+    await _handle_log({
+        "timestamp": now,
+        "data": {
+            "source": "auth",
+            "line": "Failed password for root from 10.0.0.55 port 22 ssh2",
+            "file": "/var/log/auth.log",
+        },
+    })
+    await asyncio.sleep(0.05)
+    monkeypatch.undo()
+
+    conn = await get_db()
+    try:
+        cursor = await conn.execute(
+            "SELECT action_taken FROM security_events WHERE source_ip = ? ORDER BY id DESC LIMIT 1",
+            ("10.0.0.55",),
+        )
+        event_row = await cursor.fetchone()
+        cursor = await conn.execute(
+            "SELECT status, details FROM response_audit WHERE source_ip = ? AND stage = 'decision' ORDER BY id DESC LIMIT 1",
+            ("10.0.0.55",),
+        )
+        audit_row = await cursor.fetchone()
+    finally:
+        await conn.close()
+
+    assert event_row["action_taken"] == "review_required"
+    assert audit_row["status"] == "review"
+    assert "standby_passive_node" in str(audit_row["details"])

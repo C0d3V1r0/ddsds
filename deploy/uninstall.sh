@@ -36,7 +36,8 @@ fi
 
 log_step "1/8" "Остановка сервисов..."
 systemctl stop nullius-agent nullius-api nullius-backup.timer nullius-backup.service nginx 2>/dev/null || true
-systemctl disable nullius-agent nullius-api nullius-backup.timer 2>/dev/null || true
+systemctl stop nullius-failover-orchestrator.timer nullius-failover-orchestrator.service 2>/dev/null || true
+systemctl disable nullius-agent nullius-api nullius-backup.timer nullius-failover-orchestrator.timer 2>/dev/null || true
 
 log_step "2/8" "Принудительное завершение оставшихся процессов..."
 kill_matching_processes "/opt/nullius/bin/nullius-agent"
@@ -49,10 +50,13 @@ rm -f /etc/systemd/system/nullius-agent.service
 rm -f /etc/systemd/system/nullius-api.service
 rm -f /etc/systemd/system/nullius-backup.service
 rm -f /etc/systemd/system/nullius-backup.timer
+rm -f /etc/systemd/system/nullius-failover-orchestrator.service
+rm -f /etc/systemd/system/nullius-failover-orchestrator.timer
 rm -rf /etc/systemd/system/nullius-api.service.d
 rm -rf /etc/systemd/system/nullius-agent.service.d
 systemctl daemon-reload
 systemctl reset-failed nullius-api nullius-agent nullius-backup.service 2>/dev/null || true
+systemctl reset-failed nullius-failover-orchestrator.service 2>/dev/null || true
 
 log_step "4/8" "Удаление nginx-конфига..."
 rm -f /etc/nginx/sites-enabled/nullius
@@ -68,6 +72,11 @@ log_step "5/8" "Удаление logrotate и CLI..."
 rm -f /etc/logrotate.d/nullius
 rm -f /usr/local/bin/nullius-ctl
 rm -f /usr/local/bin/nullius-backup
+rm -f /usr/local/bin/nullius-verify-backup
+rm -f /usr/local/bin/nullius-restore
+rm -f /usr/local/bin/nullius-promote-standby
+rm -f /usr/local/bin/nullius-failover-drill
+rm -f /usr/local/bin/nullius-failover-orchestrator
 
 log_step "6/8" "Удаление сертификатов и файлов проекта..."
 if command -v certbot &>/dev/null; then

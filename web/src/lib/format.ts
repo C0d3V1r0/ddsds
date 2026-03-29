@@ -75,10 +75,14 @@ export function formatEventType(value: string) {
     sqli: { ru: 'SQL injection', en: 'SQL injection' },
     xss: { ru: 'Cross-site scripting', en: 'Cross-site scripting' },
     path_traversal: { ru: 'Обход путей', en: 'Path traversal' },
+    command_injection: { ru: 'Command injection', en: 'Command injection' },
     sensitive_path_probe: { ru: 'Разведка чувствительных путей', en: 'Sensitive path probing' },
     scanner_probe: { ru: 'Сканирующий инструмент', en: 'Scanner probe' },
+    web_login_bruteforce: { ru: 'Подбор пароля в web-логине', en: 'Web login brute force' },
     port_scan: { ru: 'Сканирование портов', en: 'Port scan' },
     recon_chain: { ru: 'Коррелированная разведка', en: 'Correlated reconnaissance' },
+    credential_attack_chain: { ru: 'Коррелированная атака на учётные данные', en: 'Correlated credential attack' },
+    web_attack_chain: { ru: 'Коррелированная web-атака', en: 'Correlated web attack' },
     anomaly: { ru: 'Аномалия метрик', en: 'Metrics anomaly' },
   };
 
@@ -92,7 +96,10 @@ export function formatEventDescription(description: string, type?: string) {
   const portScanMatch = description.match(/^(\d+)\s+unique destination ports probed in\s+(\d+)s$/i);
   const sshThresholdMatch = description.match(/^(\d+)\+\s+failed SSH attempts in\s+(\d+)s$/i);
   const sshInvalidUsersMatch = description.match(/^(\d+)\+\s+invalid SSH users in\s+(\d+)s$/i);
+  const webLoginBruteforceMatch = description.match(/^(\d+)\+\s+repeated web login attempts in\s+(\d+)s$/i);
   const reconChainMatch = description.match(/^Correlated recon chain:\s+(.+)$/i);
+  const credentialChainMatch = description.match(/^Correlated credential chain:\s+(.+)$/i);
+  const webChainMatch = description.match(/^Correlated web attack chain:\s+(.+)$/i);
 
   if (description.startsWith('ML-detected: ')) {
     const label = description.replace('ML-detected: ', '');
@@ -138,10 +145,28 @@ export function formatEventDescription(description: string, type?: string) {
     return t.security.eventSshUserEnumDescription(attempts, window);
   }
 
+  if (webLoginBruteforceMatch) {
+    const attempts = Number(webLoginBruteforceMatch[1]);
+    const window = Number(webLoginBruteforceMatch[2]);
+    return t.security.eventWebLoginBruteforceDescription(attempts, window);
+  }
+
   if (reconChainMatch) {
     const rawTypes = reconChainMatch[1].split(',').map((item) => item.trim()).filter(Boolean);
     const labels = rawTypes.map((item) => formatEventType(item)).join(', ');
     return t.security.eventReconChainDescription(labels);
+  }
+
+  if (credentialChainMatch) {
+    const rawTypes = credentialChainMatch[1].split(',').map((item) => item.trim()).filter(Boolean);
+    const labels = rawTypes.map((item) => formatEventType(item)).join(', ');
+    return t.security.eventCredentialChainDescription(labels);
+  }
+
+  if (webChainMatch) {
+    const rawTypes = webChainMatch[1].split(',').map((item) => item.trim()).filter(Boolean);
+    const labels = rawTypes.map((item) => formatEventType(item)).join(', ');
+    return t.security.eventWebAttackChainDescription(labels);
   }
 
   return description;
@@ -210,6 +235,8 @@ export function formatEventExplanation(event: Pick<SecurityEvent, 'explanation_c
       return t.security.explanationSensitivePathProbe;
     case 'scanner_tool_pattern':
       return t.security.explanationScannerToolPattern;
+    case 'web_login_threshold':
+      return t.security.explanationWebLoginThreshold;
     case 'rule_ml_confirmed':
       return t.security.explanationRuleMlConfirmed;
     case 'unique_destination_ports_threshold':
@@ -230,6 +257,19 @@ export function formatIncidentStatus(value: 'new' | 'investigating' | 'resolved'
     resolved: t.security.incidentResolved,
   };
   return map[value] ?? value;
+}
+
+export function formatIncidentResolutionHeadline(value?: string) {
+  const map: Record<string, string> = {
+    incident_resolved: t.security.incidentResolutionHeadlineIncidentResolved,
+    source_blocked: t.security.incidentResolutionHeadlineSourceBlocked,
+    decision_recorded: t.security.incidentResolutionHeadlineDecisionRecorded,
+    investigation_open: t.security.incidentResolutionHeadlineInvestigationOpen,
+    review: t.security.incidentResolutionHeadlineReview,
+    contain: t.security.incidentResolutionHeadlineContain,
+    block: t.security.incidentResolutionHeadlineBlock,
+  };
+  return map[value ?? ''] ?? t.security.incidentResolutionOpen;
 }
 
 export function formatAuditStage(value: string) {
@@ -259,11 +299,86 @@ export function formatAuditStatus(value: string) {
 }
 
 export function formatAuditSummary(entry: ResponseAuditEntry) {
-  const command = entry.command ? ` · ${entry.command}` : '';
-  const source = entry.source_ip ? ` · ${formatEventSource(entry.source_ip)}` : '';
-  const type = entry.event_type ? formatEventType(entry.event_type) : '';
-  const head = type || t.security.auditGeneric;
-  return `${head}${source}${command}`;
+  const details = entry.details ?? {};
+  const source = entry.source_ip ? formatEventSource(entry.source_ip) : '';
+  const type = entry.event_type ? formatEventType(entry.event_type) : t.security.auditGeneric;
+  const origin = String(details.origin ?? '');
+  const reason = String(details.reason ?? '');
+  const operationMode = String(details.operation_mode ?? '');
+  const policyStage = String(details.policy_stage ?? '');
+  const operatorPriority = String(details.operator_priority ?? '');
+  const recentEventsCount = Number(details.recent_events_count ?? 0);
+  const stageLabelMap: Record<string, string> = {
+    observe: t.security.auditPolicyStageObserve,
+    review: t.security.auditPolicyStageReview,
+    contain: t.security.auditPolicyStageContain,
+    block: t.security.auditPolicyStageBlock,
+  };
+  const priorityLabelMap: Record<string, string> = {
+    low: t.security.auditPriorityLow,
+    normal: t.security.auditPriorityNormal,
+    high: t.security.auditPriorityHigh,
+    urgent: t.security.auditPriorityUrgent,
+  };
+
+  if (entry.stage === 'detected') {
+    const parts = [type];
+    if (source) parts.push(source);
+    if (recentEventsCount > 0) parts.push(t.security.auditRecentEvents(recentEventsCount));
+    return parts.join(' · ');
+  }
+
+  if (entry.stage === 'decision') {
+    const parts = [type];
+    if (source) parts.push(source);
+    if (operationMode) parts.push(t.security.auditMode(operationMode));
+    if (policyStage) parts.push(t.security.auditPolicyStage(stageLabelMap[policyStage] ?? policyStage));
+    if (operatorPriority) parts.push(t.security.auditPriority(priorityLabelMap[operatorPriority] ?? operatorPriority));
+    if (reason === 'cooldown_active') parts.push(t.security.auditReasonCooldownActive);
+    if (reason === 'already_blocked_followup') parts.push(t.security.auditReasonAlreadyBlockedFollowup);
+    if (reason === 'recent_duplicate_event') parts.push(t.security.auditReasonRecentDuplicate);
+    if (reason === 'critical_severity') parts.push(t.security.auditReasonCriticalSeverity);
+    if (reason === 'high_severity_containment') parts.push(t.security.auditReasonHighSeverityContainment);
+    if (reason === 'active_attack_high_confidence') parts.push(t.security.auditReasonActiveAttackContainment);
+    if (reason === 'credential_attack_first_seen') parts.push(t.security.auditReasonCredentialFirstSeen);
+    if (reason === 'credential_attack_escalation') parts.push(t.security.auditReasonCredentialEscalation);
+    if (reason === 'reconnaissance_escalation') parts.push(t.security.auditReasonReconEscalation);
+    if (reason === 'reconnaissance_review') parts.push(t.security.auditReasonReconReview);
+    if (reason === 'manual_containment_required') parts.push(t.security.auditReasonManualContainment);
+    if (reason === 'standby_passive_node') parts.push(t.security.auditReasonStandbyPassiveNode);
+    return parts.join(' · ');
+  }
+
+  if (entry.stage === 'command_dispatched') {
+    const parts = [type];
+    if (source) parts.push(source);
+    if (entry.command) parts.push(entry.command);
+    parts.push(t.security.auditCommandQueued);
+    return parts.join(' · ');
+  }
+
+  if (entry.stage === 'command_result') {
+    const parts = [type];
+    if (source) parts.push(source);
+    if (entry.command) parts.push(entry.command);
+    parts.push(entry.status === 'success' ? t.security.auditCommandOutcomeSuccess : t.security.auditCommandOutcomeError);
+    return parts.join(' · ');
+  }
+
+  if (entry.stage === 'manual_action') {
+    const parts = [type];
+    if (source) parts.push(source);
+    if (origin === 'telegram_bot') parts.push(t.security.auditOriginTelegram);
+    else parts.push(t.security.auditOriginOperator);
+    if (entry.action === 'incident_note') parts.push(t.security.auditNoteAdded);
+    if (entry.action === 'incident_status_update') parts.push(t.security.auditIncidentStatusUpdated);
+    return parts.join(' · ');
+  }
+
+  const parts = [type];
+  if (source) parts.push(source);
+  if (origin === 'auto_response') parts.push(t.security.auditOriginAutoResponse);
+  return parts.join(' · ');
 }
 
 export function formatRiskLevel(level: 'low' | 'medium' | 'high' | 'critical') {
@@ -337,6 +452,45 @@ export function formatRiskTrend(history: RiskHistoryPoint[]) {
   if (delta > 0) return t.system.riskTrendUp(delta);
   if (delta < 0) return t.system.riskTrendDown(Math.abs(delta));
   return t.system.riskTrendStable;
+}
+
+export function formatRiskTopContributors(factors: RiskFactor[], limit = 3) {
+  return [...factors]
+    .sort((left, right) => right.weight - left.weight)
+    .slice(0, limit)
+    .map((factor) => ({
+      ...factor,
+      label: formatRiskFactor(factor),
+    }));
+}
+
+export function formatRiskChangeSummary(
+  currentFactors: RiskFactor[],
+  history: RiskHistoryPoint[],
+  currentScore: number,
+) {
+  if (history.length < 2 || currentFactors.length === 0) {
+    return t.system.riskChangeSummaryStable;
+  }
+
+  const previous = history[history.length - 2];
+  const previousMap = new Map(previous.factors.map((factor) => [factor.code, factor.weight]));
+  const currentTop = formatRiskTopContributors(currentFactors, 1)[0];
+  if (!currentTop) {
+    return t.system.riskChangeSummaryStable;
+  }
+
+  const previousWeight = previousMap.get(currentTop.code) ?? 0;
+  if (previousWeight === 0) {
+    return t.system.riskChangeSummaryNewFactor(currentTop.label);
+  }
+  if (currentScore > previous.score && currentTop.weight >= previousWeight) {
+    return t.system.riskChangeSummaryIncrease(currentTop.label);
+  }
+  if (currentScore < previous.score) {
+    return t.system.riskChangeSummaryDecrease(currentTop.label);
+  }
+  return t.system.riskChangeSummaryStable;
 }
 
 export function formatRelativeAge(timestamp?: number | null) {

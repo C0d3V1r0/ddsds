@@ -128,3 +128,15 @@ async def test_terminate_process_returns_agent_error(test_app, monkeypatch):
         resp = await client.post("/api/processes/terminate", json={"pid": 3131})
 
     assert resp.status_code == 502
+
+
+@pytest.mark.asyncio
+async def test_terminate_process_rejects_on_standby(standby_test_app, monkeypatch):
+    update_processes([{"pid": 6161, "name": "sleep", "cpu": 0.1, "ram": 1024, "start_time": 111}])
+    monkeypatch.setattr("api.processes.get_agent_ws", lambda: object())
+
+    transport = ASGITransport(app=standby_test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/api/processes/terminate", json={"pid": 6161})
+
+    assert resp.status_code == 409

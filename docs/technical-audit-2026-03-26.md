@@ -40,10 +40,17 @@
 - подготовка baseline для anomaly detector вынесена в отдельный dataset builder с quality score, clean/discarded samples и фильтрацией шумных интервалов вокруг security events
 - detection layer приведён к structured framework с явным registry правил вместо разрозненного роутинга по source
 - `port_scan` больше не является “висячим” типом события: добавлен реальный detector по firewall/kernel логам и end-to-end enrich/policy path
+- detection coverage усилен новыми сценариями: `command_injection` и `web_login_bruteforce`, чтобы продукт лучше видел реальные web-атаки и credential abuse beyond SSH
 - проведён отдельный `functional-first` refactor pass: detection/baseline pipeline избавлен от лишних data-only классов, а `processes API` и frontend security hooks стали менее связанными и проще для тестирования
 - добавлен `Response trail`: backend теперь хранит этапы `detected -> decision -> command_dispatched -> command_result`, а UI умеет показать эту цепочку для конкретного события или инцидента
+- incident workflow вырос в полноценный detail API: инцидент теперь отдаёт progression, evidence summary, blocked context, operator notes и resolution summary, а frontend перестал собирать расследование из разрозненных запросов
 - risk score теперь поддерживает историю снапшотов и тренд, а не только текущее мгновенное значение
 - для single-server resilience добавлен встроенный backup-контур: `nullius-backup.timer` регулярно сохраняет БД и конфиг в `/opt/nullius/backups`
+- backup-контур доведён до recovery-цикла: добавлены `nullius-verify-backup` и `nullius-restore`, так что resilience теперь покрывает не только создание архива, но и проверяемое восстановление
+- добавлен первый честный шаг к warm standby: `deployment.role = primary|standby`, пассивный standby-режим без active response / mutating loops и отдельный `nullius-promote-standby` для безопасного ручного promote
+- standby-контур усилен эксплуатационно: появился `primary lock` как anti-split-brain safeguard, non-destructive `nullius-failover-drill` и отдельный `failover-runbook.md`
+- добавлен осторожный `failover orchestration` для standby: systemd timer следит за доступностью primary по health API, ждёт порог подряд неудачных проверок и не запускает promote, пока удерживается `primary lock`
+- добавлен self-protection audit самой платформы: backend проверяет небезопасные режимы UI auth, overly broad CORS, транспорт агента и права доступа к `nullius.yaml` / `agent.key`, а `Система` показывает это отдельной карточкой
 
 ### Frontend / Performance
 
@@ -78,6 +85,7 @@
 
 - добавлен smoke-модуль MVP
 - добавлен e2e smoke на Playwright
+- добавлен отдельный `security validation suite` для hostile/investigation regression-прохода на живом стенде
 - e2e перенесён под `web/e2e`, чтобы зависимости резолвились штатно
 - `build.sh` и `run_mvp_suite.sh` теперь принудительно тянут frontend dev-зависимости для e2e
 - добавлены regression tests для install/runtime/config/security/live-logs

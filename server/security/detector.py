@@ -14,6 +14,8 @@ from security.rules import (
     SSH_INVALID_USER_PATTERN,
     SCANNER_TOOL_PATTERNS,
     SENSITIVE_PATH_PATTERNS,
+    WEB_ACCESS_LOG_PATTERN,
+    WEB_LOGIN_PATH_PATTERN,
     WEB_ATTACK_PATTERNS,
 )
 
@@ -56,10 +58,20 @@ def detect_auth_rule(context: DetectionContext, state: dict, config: SecurityCon
     )
 
 
-def detect_web_rule(context: DetectionContext, _state: dict, config: SecurityConfig) -> dict | None:
+def detect_web_rule(context: DetectionContext, state: dict, config: SecurityConfig) -> dict | None:
     web_attack_event = detect_web_attack(context["line"], enabled=config.web_attacks.enabled)
     if web_attack_event is not None:
         return web_attack_event
+    web_login_event = detect_web_login_abuse(
+        context["line"],
+        login_attempts=state.setdefault("web_login_attempts", {}),
+        enabled=config.web_login_abuse.enabled,
+        threshold=config.web_login_abuse.threshold,
+        window=config.web_login_abuse.window,
+        now=context["now"],
+    )
+    if web_login_event is not None:
+        return web_login_event
     return detect_recon_probe(context["line"], enabled=config.recon_probes.enabled)
 
 
@@ -194,6 +206,52 @@ def detect_recon_probe(line: str, *, enabled: bool) -> dict | None:
     return None
 
 
+def detect_web_login_abuse(
+    line: str,
+    *,
+    login_attempts: dict[str, list[int]],
+    enabled: bool,
+    threshold: int,
+    window: int,
+    now: int,
+) -> dict | None:
+    """Ловит повторяющиеся попытки входа в web-login формы по access-логам."""
+    if not enabled:
+        return None
+
+    match = WEB_ACCESS_LOG_PATTERN.search(line)
+    if not match:
+        return None
+
+    method = str(match.group("method"))
+    path = str(match.group("path"))
+    status = int(match.group("status"))
+    source_ip = str(match.group("ip"))
+
+    if method != "POST":
+        return None
+    if not WEB_LOGIN_PATH_PATTERN.search(path):
+        return None
+    if status not in {200, 401, 403, 429}:
+        return None
+
+    login_attempts.setdefault(source_ip, []).append(now)
+    login_attempts[source_ip] = _filter_timestamps_in_window(login_attempts[source_ip], now=now, window=window)
+    _prune_stale_attempts(login_attempts, current_ip=source_ip, now=now, window=window)
+
+    if len(login_attempts[source_ip]) < threshold:
+        return None
+
+    login_attempts[source_ip] = []
+    return {
+        "type": "web_login_bruteforce",
+        "severity": "high",
+        "source_ip": source_ip,
+        "description": f"{threshold}+ repeated web login attempts in {window}s",
+        "raw_log": line,
+    }
+
+
 def detect_port_scan(
     line: str,
     *,
@@ -309,6 +367,7 @@ class Detector:
     config: SecurityConfig
     ssh_attempts: dict[str, list[int]] = field(default_factory=lambda: defaultdict(list))
     ssh_invalid_user_attempts: dict[str, list[int]] = field(default_factory=lambda: defaultdict(list))
+    web_login_attempts: dict[str, list[int]] = field(default_factory=lambda: defaultdict(list))
     port_scan_attempts: dict[str, list[tuple[int, int]]] = field(default_factory=lambda: defaultdict(list))
 
     def check_log(self, log_entry: dict) -> dict | None:
@@ -319,6 +378,7 @@ class Detector:
             state={
                 "ssh_attempts": self.ssh_attempts,
                 "ssh_invalid_user_attempts": self.ssh_invalid_user_attempts,
+                "web_login_attempts": self.web_login_attempts,
                 "port_scan_attempts": self.port_scan_attempts,
             },
         )

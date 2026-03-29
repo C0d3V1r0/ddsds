@@ -2,7 +2,7 @@
 import pytest
 import time
 from httpx import AsyncClient, ASGITransport
-from db import get_db, enqueue_write
+from db import get_db
 
 @pytest.mark.asyncio
 async def test_get_current_metrics_empty(test_app):

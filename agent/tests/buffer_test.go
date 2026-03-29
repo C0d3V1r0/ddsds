@@ -71,3 +71,20 @@ func TestRingBufferNegativeCapacityPanics(t *testing.T) {
 	}()
 	buffer.New(-1)
 }
+
+// Буфер обязан хранить свою копию, а не ссылку на исходный слайс.
+func TestRingBufferPushClonesData(t *testing.T) {
+	rb := buffer.New(2)
+	source := []byte("abc")
+
+	rb.Push(source)
+	source[0] = 'z'
+
+	items := rb.DrainAll()
+	if len(items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(items))
+	}
+	if string(items[0]) != "abc" {
+		t.Fatalf("expected cloned payload 'abc', got %q", string(items[0]))
+	}
+}

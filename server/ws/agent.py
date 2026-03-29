@@ -5,6 +5,7 @@ import logging
 import time
 import asyncio
 from fastapi import WebSocket, WebSocketDisconnect
+from deployment import active_response_enabled
 from db import enqueue_write, get_db
 from api.logs import append_log
 from api.processes import update_processes
@@ -20,6 +21,7 @@ DEFAULT_BLOCK_DURATION = 86400
 MAX_LOG_LINE_CHARS = 4096
 MAX_LOG_SOURCE_CHARS = 64
 MAX_LOG_FILE_CHARS = 512
+ACTIVE_RESPONSE_COMMANDS = {"block_ip", "unblock_ip", "restart_service", "kill_process", "force_kill_process"}
 
 _agent_ws: WebSocket | None = None
 _detector = None
@@ -149,15 +151,19 @@ async def agent_ws_handler(ws: WebSocket, secret: str):
     try:
         msg = await ws.receive_json()
         # Timing-safe сравнение для защиты от атак по времени отклика
-        if msg.get("type") != "auth" or not hmac.compare_digest(msg.get("secret", ""), secret):
+        if not isinstance(msg, dict):
+            await ws.send_json({"type": "auth_error", "error": "invalid secret"})
+            await ws.close(code=4001)
+            return
+        if msg.get("type") != "auth" or not hmac.compare_digest(str(msg.get("secret", "")), secret):
             await ws.send_json({"type": "auth_error", "error": "invalid secret"})
             await ws.close(code=4001)
             return
         await ws.send_json({"type": "auth_ok"})
     except WebSocketDisconnect:
         return
-    except Exception as e:
-        _logger.warning(f"Ошибка при аутентификации агента: {e}")
+    except (TypeError, ValueError) as exc:
+        _logger.warning(f"Ошибка при аутентификации агента: {exc}")
         await ws.close(code=4001)
         return
 
@@ -166,8 +172,8 @@ async def agent_ws_handler(ws: WebSocket, secret: str):
         _logger.warning("Новое подключение агента вытесняет предыдущее")
         try:
             await _agent_ws.close(code=4000)
-        except Exception:
-            pass
+        except RuntimeError:
+            _logger.debug("Предыдущее WS-подключение агента уже недоступно во время вытеснения", exc_info=True)
     _agent_ws = ws
     health.set_agent_status(True)
     try:
@@ -355,6 +361,15 @@ async def _handle_log(msg: dict):
         medium_escalation_threshold=int(_config.medium_escalation_threshold) if _config else 3,
         cooldown_active=bool(response_context["cooldown_active"]),
     )
+    if not active_response_enabled() and action["action"] == "block":
+        # Standby-узел может анализировать сигналы, но не должен выполнять containment/block.
+        action = {
+            **action,
+            "action": "review",
+            "stage": "observe",
+            "reason": "standby_passive_node",
+            "operator_priority": "high",
+        }
     action_taken = "logged"
     if action["action"] == "review":
         action_taken = "review_required"
@@ -387,9 +402,13 @@ async def _handle_log(msg: dict):
         action=action_taken,
         details={
             "policy_action": action["action"],
+            "policy_stage": action.get("stage", ""),
+            "reason": action.get("reason", ""),
+            "operator_priority": action.get("operator_priority", ""),
             "operation_mode": get_operation_mode(),
             "recent_events_count": int(response_context["recent_events_count"]),
             "cooldown_active": bool(response_context["cooldown_active"]),
+            "currently_blocked": bool(response_context["currently_blocked"]),
         },
         timestamp=ts,
     )
@@ -472,6 +491,8 @@ async def _handle_services(msg: dict):
 
 
 async def send_command(command: str, params: dict, await_result: bool = False, timeout: float = 6.0) -> dict | None:
+    if not active_response_enabled() and command in ACTIVE_RESPONSE_COMMANDS:
+        raise RuntimeError("Current node is in standby mode and cannot execute active response commands")
     ws = get_agent_ws()
     if ws:
         cmd_id = f"cmd_{int(time.time() * 1000)}"
@@ -498,7 +519,7 @@ async def send_command(command: str, params: dict, await_result: bool = False, t
             return None
         try:
             return await asyncio.wait_for(future, timeout=timeout)
-        except Exception:
+        except asyncio.TimeoutError:
             _pending_command_results.pop(cmd_id, None)
             raise
     return None

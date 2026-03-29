@@ -56,7 +56,7 @@ cmd_status() {
 
     # Systemd сервисы
     echo "--- Сервисы ---"
-    for svc in nullius-agent nullius-api nginx; do
+    for svc in nullius-agent nullius-api nginx nullius-backup.timer nullius-failover-orchestrator.timer; do
         if systemctl is-active --quiet "$svc" 2>/dev/null; then
             echo "  $svc: активен"
         else
@@ -73,6 +73,11 @@ cmd_status() {
         echo "  API: OK ($HEALTH)"
     else
         echo "  API: недоступен"
+    fi
+
+    if curl -sk --max-time 3 http://127.0.0.1:8000/api/deployment > /dev/null 2>&1; then
+        DEPLOYMENT=$(curl -sk --max-time 3 http://127.0.0.1:8000/api/deployment 2>/dev/null)
+        echo "  Deployment: $DEPLOYMENT"
     fi
 
     echo ""

@@ -36,6 +36,10 @@ echo "[health] Проверяю runtime..."
 curl --fail --silent http://127.0.0.1:8000/api/health
 echo
 
+echo "[backup] Проверяю backup/verify контур..."
+/usr/local/bin/nullius-backup
+/usr/local/bin/nullius-verify-backup
+
 cd "$ROOT_DIR"
 python3 "$ROOT_DIR/testing/smoke/mvp_smoke.py"
 "$ROOT_DIR/testing/run_mvp_suite.sh"

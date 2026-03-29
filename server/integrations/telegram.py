@@ -7,12 +7,16 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any
 
 from api import health
 from api.risk import calculate_risk_score
 from api.security import _build_incidents
 from db import get_db, enqueue_write
+from integrations.policy import (
+    normalize_notify_min_severity,
+    normalize_quiet_time,
+    should_notify_by_policy,
+)
 from security.audit import append_response_audit, make_trace_id
 from security.mode import get_operation_mode
 
@@ -44,6 +48,9 @@ async def configure_telegram_bot(
     token: str,
     notify_auto_block: bool,
     notify_high_severity: bool,
+    notify_min_severity: str,
+    quiet_hours_start: str,
+    quiet_hours_end: str,
 ) -> dict[str, object]:
     cleaned_token = token.strip()
     if not cleaned_token:
@@ -56,6 +63,9 @@ async def configure_telegram_bot(
 
     result = dict(bot_info.get("result") or {})
     now = int(time.time())
+    min_severity = normalize_notify_min_severity(notify_min_severity)
+    quiet_start = normalize_quiet_time(quiet_hours_start)
+    quiet_end = normalize_quiet_time(quiet_hours_end)
     await _write_settings_row(
         (
             1,
@@ -67,6 +77,9 @@ async def configure_telegram_bot(
             0,
             1 if notify_auto_block else 0,
             1 if notify_high_severity else 0,
+            min_severity,
+            quiet_start,
+            quiet_end,
             "",
             now,
         )
@@ -90,11 +103,7 @@ async def send_telegram_test_message() -> dict[str, object]:
 
 
 def _should_notify_event(settings: dict[str, object], event: dict[str, object]) -> bool:
-    action_taken = str(event.get("action_taken", "") or "")
-    severity = str(event.get("severity", "") or "")
-    if action_taken == "auto_block":
-        return bool(settings["notify_auto_block"])
-    return bool(settings["notify_high_severity"]) and severity in {"high", "critical"}
+    return should_notify_by_policy(settings, event)
 
 
 def _build_event_message(event: dict[str, object]) -> str:
@@ -371,6 +380,8 @@ def start_telegram_loop() -> asyncio.Task:
         while True:
             try:
                 await run_telegram_poll_cycle()
+            except asyncio.CancelledError:
+                raise
             except Exception:
                 _logger.warning("Telegram loop завершился ошибкой", exc_info=True)
             await asyncio.sleep(5)
@@ -408,6 +419,9 @@ async def _load_settings_row() -> dict[str, object]:
             "last_update_id": int(raw.get("last_update_id", 0) or 0),
             "notify_auto_block": bool(int(raw.get("notify_auto_block", 1) or 0)),
             "notify_high_severity": bool(int(raw.get("notify_high_severity", 0) or 0)),
+            "notify_min_severity": normalize_notify_min_severity(str(raw.get("notify_min_severity", "high") or "high")),
+            "quiet_hours_start": str(raw.get("quiet_hours_start", "") or ""),
+            "quiet_hours_end": str(raw.get("quiet_hours_end", "") or ""),
             "last_error": str(raw.get("last_error", "") or ""),
             "updated_at": int(raw.get("updated_at", 0) or 0),
         }
@@ -426,6 +440,9 @@ def _serialize_settings(raw: dict[str, object]) -> dict[str, object]:
         "chat_title": str(raw.get("chat_title", "") or ""),
         "notify_auto_block": bool(int(raw.get("notify_auto_block", 1) or 0)),
         "notify_high_severity": bool(int(raw.get("notify_high_severity", 0) or 0)),
+        "notify_min_severity": normalize_notify_min_severity(str(raw.get("notify_min_severity", "high") or "high")),
+        "quiet_hours_start": str(raw.get("quiet_hours_start", "") or ""),
+        "quiet_hours_end": str(raw.get("quiet_hours_end", "") or ""),
         "last_error": str(raw.get("last_error", "") or ""),
         "updated_at": int(raw.get("updated_at", 0) or 0),
     }
@@ -440,13 +457,16 @@ def _empty_telegram_settings() -> dict[str, object]:
         "chat_title": "",
         "notify_auto_block": True,
         "notify_high_severity": False,
+        "notify_min_severity": "high",
+        "quiet_hours_start": "",
+        "quiet_hours_end": "",
         "last_error": "",
         "updated_at": 0,
     }
 
 
 async def _reset_telegram_settings() -> None:
-    await _write_settings_row((1, "", "", "", "", "", 0, 1, 0, "", int(time.time())))
+    await _write_settings_row((1, "", "", "", "", "", 0, 1, 0, "high", "", "", "", int(time.time())))
 
 
 async def _write_settings_row(values: tuple[object, ...]) -> None:
@@ -456,8 +476,9 @@ async def _write_settings_row(values: tuple[object, ...]) -> None:
             """
             INSERT OR REPLACE INTO telegram_settings (
                 id, bot_token, bot_username, bot_name, chat_id, chat_title, last_update_id,
-                notify_auto_block, notify_high_severity, last_error, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                notify_auto_block, notify_high_severity, notify_min_severity, quiet_hours_start,
+                quiet_hours_end, last_error, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             values,
         )

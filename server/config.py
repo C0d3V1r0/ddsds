@@ -1,4 +1,5 @@
 # Загрузка конфигурации из YAML-файла с валидацией через pydantic
+import socket
 from pathlib import Path
 import yaml
 from pydantic import BaseModel, Field
@@ -55,12 +56,20 @@ class ReconProbesConfig(BaseModel):
     action: str = "review"
 
 
+class WebLoginAbuseConfig(BaseModel):
+    enabled: bool = True
+    threshold: int = 5
+    window: int = 300
+    action: str = "block"
+
+
 # Политики безопасности: автоблокировка, разрешённые сервисы
 class SecurityConfig(BaseModel):
     ssh_brute_force: SSHBruteForceConfig = Field(default_factory=SSHBruteForceConfig)
     ssh_invalid_user: SSHInvalidUserConfig = Field(default_factory=SSHInvalidUserConfig)
     web_attacks: WebAttacksConfig = Field(default_factory=WebAttacksConfig)
     recon_probes: ReconProbesConfig = Field(default_factory=ReconProbesConfig)
+    web_login_abuse: WebLoginAbuseConfig = Field(default_factory=WebLoginAbuseConfig)
     port_scan: PortScanConfig = Field(default_factory=PortScanConfig)
     operation_mode: str = "auto_defend"
     auto_block: bool = True
@@ -104,6 +113,21 @@ class RiskConfig(BaseModel):
     history_points: int = 24
 
 
+class DeploymentConfig(BaseModel):
+    role: str = "primary"
+    node_name: str = Field(default_factory=socket.gethostname)
+    primary_lock_path: str = "/opt/nullius/data/primary.lock"
+
+
+class FailoverConfig(BaseModel):
+    enabled: bool = False
+    primary_api_url: str = ""
+    check_interval: int = 60
+    failure_threshold: int = 3
+    cooloff_seconds: int = 600
+    state_file: str = "/opt/nullius/data/failover-state.json"
+
+
 # Корневой конфиг приложения, объединяет все секции
 class NulliusConfig(BaseModel):
     agent: AgentConfig = Field(default_factory=AgentConfig)
@@ -111,6 +135,8 @@ class NulliusConfig(BaseModel):
     ml: MLConfig = Field(default_factory=MLConfig)
     api: APIConfig = Field(default_factory=APIConfig)
     risk: RiskConfig = Field(default_factory=RiskConfig)
+    deployment: DeploymentConfig = Field(default_factory=DeploymentConfig)
+    failover: FailoverConfig = Field(default_factory=FailoverConfig)
 
 
 def load_config(path: str) -> NulliusConfig:

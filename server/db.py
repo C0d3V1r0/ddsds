@@ -80,11 +80,13 @@ async def _writer_loop(db_path: str) -> None:
                         await conn.execute(sql, params)
                         await conn.commit()
                         break
-                    except Exception as e:
+                    except aiosqlite.Error as e:
                         _logger.warning(f"Ошибка записи в БД (попытка {attempt + 1}/3): {e}")
                         if attempt == 2:
                             raise
                         await asyncio.sleep(0.01 * (2 ** attempt))
+    except aiosqlite.Error:
+        _logger.error("Writer loop завершился с ошибкой SQLite", exc_info=True)
     except Exception:
         _logger.error("Writer loop завершился с ошибкой", exc_info=True)
 

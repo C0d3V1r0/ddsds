@@ -90,6 +90,12 @@ NULLIUS_SCAN_TARGET_HOST=<ip_сервера> python3 testing/smoke/port_scan_smo
 ./testing/run_mvp_suite.sh
 ```
 
+Security-oriented validation:
+
+```bash
+NULLIUS_SCAN_TARGET_HOST=<ip_сервера> ./testing/run_security_validation_suite.sh
+```
+
 Полный destructive acceptance на живом сервере:
 
 ```bash
@@ -168,12 +174,20 @@ python3 -m venv venv
 - `Обзор` показывает метрики именно Linux-хоста: CPU, RAM, диск, сеть, сервисы и свежие security events.
 - `Система` показывает состояние самой платформы Nullius: API, агент, БД, ML-модуль и сведения о развёртывании.
 - В `Система` риск сервера теперь показывает не только текущий score, но и краткий тренд по накопленной истории risk snapshots.
+- В `Система` появился блок `Самозащита платформы`, который показывает опасные режимы конфигурации, открытый CORS, небезопасный transport агента и слишком широкие права на чувствительные файлы.
 - `Процессы` поддерживают два уровня действия:
   - `Завершить` — мягкое завершение через `SIGTERM`
   - `Убить` — принудительный `SIGKILL` для обычных user-space процессов
 - `Логи` поддерживают серверную фильтрацию по источнику, диапазону `from/to`, IP, типу события и поисковому запросу.
 - Из `Безопасность` можно сразу перейти к связанным логам инцидента или отдельного события с уже собранным расследовательским контекстом.
 - В `Безопасность` появился `Response trail`: для события или инцидента можно открыть цепочку `signal -> decision -> command -> result` и понять, что именно сделала система и чем это закончилось.
+- В `Безопасность` появился базовый operator workflow: инцидент можно взять в работу, закрыть или вернуть в новое состояние, а также оставить короткие заметки расследования прямо в detail-pane.
+- Detection coverage расширен не только на brute force и web-сигнатуры, но и на:
+  - `SSH user enumeration`
+  - `web login brute force`
+  - `command injection`
+  - `scanner / reconnaissance probes`
+  - `port scan`
 - `ML-модуль` для anomaly detector показывает не только `ready`, но и понятную причину текущего состояния: ожидание, обучение, недостаточно данных, недостаточно чистых данных, отложено, ошибка.
 - Для anomaly detector в `Система` теперь также показывается качество baseline: сколько метрик реально вошло в clean dataset и сколько было отброшено как шум.
 - В разделе `Интеграции` можно подключить Telegram-бота по токену, привязать чат через `/start`, получать уведомления об автоблокировках и событиях высокого уровня, а также запрашивать `/status`, `/risk`, `/incidents`.
@@ -185,6 +199,17 @@ python3 -m venv venv
 - SQLite использует `WAL`, а запись идёт через последовательную очередь.
 - Nullius теперь автоматически снимает резервные копии БД и конфига через `nullius-backup.timer`.
 - Бэкапы складываются в `/opt/nullius/backups` и автоматически чистятся по retention.
+- Появился полный recovery-контур:
+  - `nullius-backup` — создать свежий backup
+  - `nullius-verify-backup [archive]` — проверить архив на целостность и состав
+  - `nullius-restore [archive]` — восстановить БД и конфиг с автоматическим health-check после restore
+- Появился первый честный шаг к warm standby:
+  - `deployment.role: primary|standby`
+  - `deployment.primary_lock_path` удерживает `primary lock` и снижает риск split-brain
+  - standby-узел не выполняет `block/kill/restart` и не запускает mutating background loops
+  - для ручного promote есть `nullius-promote-standby`, который по умолчанию откажется от promote при живом чужом `primary lock`
+  - для регулярной проверки готовности есть `nullius-failover-drill`
+  - для осторожного auto-failover есть `nullius-failover-orchestrator.timer`: он работает только на standby, следит за `primary_api_url`, ждёт порог подряд неудачных проверок и не делает promote, пока `primary lock` удерживается
 
 ## Основные команды
 
@@ -194,4 +219,10 @@ nullius-ctl logs --follow
 nullius-ctl smoke
 nullius-ctl set-password
 nullius-ctl uninstall
+nullius-backup
+nullius-verify-backup
+nullius-restore
+nullius-promote-standby
+nullius-failover-drill
+nullius-failover-orchestrator
 ```

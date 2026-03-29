@@ -3,6 +3,7 @@ import os
 
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, HTTPException
+from deployment import is_primary_role
 from security.audit import append_response_audit, make_trace_id
 
 router = APIRouter()
@@ -81,6 +82,8 @@ def _build_process_command_payload(proc: dict[str, object], pid: int) -> dict[st
 
 
 async def _queue_process_command(pid: int, command: str) -> dict[str, object]:
+    if not is_primary_role():
+        raise HTTPException(status_code=409, detail="Standby node cannot execute active response commands")
     proc = _find_process(pid)
     if proc is None:
         raise HTTPException(status_code=404, detail="Process not found in current snapshot")

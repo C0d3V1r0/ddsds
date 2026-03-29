@@ -5,6 +5,17 @@ def test_load_config_preserves_full_agent_schema(tmp_path):
     config_path = tmp_path / "nullius.yaml"
     config_path.write_text(
         """
+deployment:
+  role: standby
+  node_name: standby-a
+  primary_lock_path: /srv/nullius/primary.lock
+failover:
+  enabled: true
+  primary_api_url: http://10.0.0.10:8000
+  check_interval: 45
+  failure_threshold: 4
+  cooloff_seconds: 900
+  state_file: /srv/nullius/failover-state.json
 agent:
   metrics_interval: 9
   services_interval: 21
@@ -25,6 +36,11 @@ security:
   recon_probes:
     enabled: false
     action: review
+  web_login_abuse:
+    enabled: true
+    threshold: 7
+    window: 420
+    action: block
   port_scan:
     enabled: true
     window: 240
@@ -60,6 +76,15 @@ risk:
 
     config = load_config(str(config_path))
 
+    assert config.deployment.role == "standby"
+    assert config.deployment.node_name == "standby-a"
+    assert config.deployment.primary_lock_path == "/srv/nullius/primary.lock"
+    assert config.failover.enabled is True
+    assert config.failover.primary_api_url == "http://10.0.0.10:8000"
+    assert config.failover.check_interval == 45
+    assert config.failover.failure_threshold == 4
+    assert config.failover.cooloff_seconds == 900
+    assert config.failover.state_file == "/srv/nullius/failover-state.json"
     assert config.agent.metrics_interval == 9
     assert config.agent.services_interval == 21
     assert config.agent.processes_interval == 13
@@ -77,6 +102,10 @@ risk:
     assert config.security.ssh_invalid_user.action == "review"
     assert config.security.recon_probes.enabled is False
     assert config.security.recon_probes.action == "review"
+    assert config.security.web_login_abuse.enabled is True
+    assert config.security.web_login_abuse.threshold == 7
+    assert config.security.web_login_abuse.window == 420
+    assert config.security.web_login_abuse.action == "block"
     assert config.security.port_scan.enabled is True
     assert config.security.port_scan.window == 240
     assert config.security.port_scan.unique_ports_threshold == 8

@@ -41,15 +41,15 @@ function AppShell() {
   useWebSocket();
   const locale = useStore((state) => state.locale);
 
+  // Локаль синхронизируем до рендера дочернего дерева, иначе страницы увидят старый словарь
+  // и визуально обновятся только после следующего цикла или ручной перезагрузки.
+  setLocaleMessages(locale);
+
   // WS подключаем при монтировании, отключаем при размонтировании
   useEffect(() => {
     connectWS();
     return () => { disconnectWS(); };
   }, []);
-
-  useEffect(() => {
-    setLocaleMessages(locale);
-  }, [locale]);
 
   return (
     <BrowserRouter>

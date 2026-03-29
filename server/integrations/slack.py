@@ -7,6 +7,11 @@ import urllib.error
 import urllib.request
 
 from db import get_db
+from integrations.policy import (
+    normalize_notify_min_severity,
+    normalize_quiet_time,
+    should_notify_by_policy,
+)
 
 _logger = logging.getLogger("nullius.integrations.slack")
 
@@ -28,16 +33,29 @@ async def configure_slack_webhook(
     webhook_url: str,
     notify_auto_block: bool,
     notify_high_severity: bool,
+    notify_min_severity: str,
+    quiet_hours_start: str,
+    quiet_hours_end: str,
 ) -> dict[str, object]:
     cleaned_webhook = webhook_url.strip()
     if not cleaned_webhook:
-        await _write_settings_row((1, "", 1, 0, "", int(time.time())))
+        await _write_settings_row((1, "", 1, 0, "high", "", "", "", int(time.time())))
         return await get_slack_settings()
 
     if not cleaned_webhook.startswith("https://hooks.slack.com/"):
         raise RuntimeError("Slack webhook URL is invalid")
 
-    await _write_settings_row((1, cleaned_webhook, 1 if notify_auto_block else 0, 1 if notify_high_severity else 0, "", int(time.time())))
+    await _write_settings_row((
+        1,
+        cleaned_webhook,
+        1 if notify_auto_block else 0,
+        1 if notify_high_severity else 0,
+        normalize_notify_min_severity(notify_min_severity),
+        normalize_quiet_time(quiet_hours_start),
+        normalize_quiet_time(quiet_hours_end),
+        "",
+        int(time.time()),
+    ))
     return await get_slack_settings()
 
 
@@ -56,11 +74,7 @@ async def send_slack_test_message() -> dict[str, object]:
 
 
 def _should_notify_event(settings: dict[str, object], event: dict[str, object]) -> bool:
-    action_taken = str(event.get("action_taken", "") or "")
-    severity = str(event.get("severity", "") or "")
-    if action_taken == "auto_block":
-        return bool(settings["notify_auto_block"])
-    return bool(settings["notify_high_severity"]) and severity in {"high", "critical"}
+    return should_notify_by_policy(settings, event)
 
 
 def _build_event_payload(event: dict[str, object]) -> dict[str, object]:
@@ -130,6 +144,9 @@ async def _load_settings_row() -> dict[str, object]:
             "webhook_url": str(raw.get("webhook_url", "") or ""),
             "notify_auto_block": bool(int(raw.get("notify_auto_block", 1) or 0)),
             "notify_high_severity": bool(int(raw.get("notify_high_severity", 0) or 0)),
+            "notify_min_severity": normalize_notify_min_severity(str(raw.get("notify_min_severity", "high") or "high")),
+            "quiet_hours_start": str(raw.get("quiet_hours_start", "") or ""),
+            "quiet_hours_end": str(raw.get("quiet_hours_end", "") or ""),
             "last_error": str(raw.get("last_error", "") or ""),
             "updated_at": int(raw.get("updated_at", 0) or 0),
         }
@@ -142,6 +159,9 @@ def _serialize_settings(raw: dict[str, object]) -> dict[str, object]:
         "configured": bool(str(raw.get("webhook_url", "") or "").strip()),
         "notify_auto_block": bool(int(raw.get("notify_auto_block", 1) or 0)),
         "notify_high_severity": bool(int(raw.get("notify_high_severity", 0) or 0)),
+        "notify_min_severity": normalize_notify_min_severity(str(raw.get("notify_min_severity", "high") or "high")),
+        "quiet_hours_start": str(raw.get("quiet_hours_start", "") or ""),
+        "quiet_hours_end": str(raw.get("quiet_hours_end", "") or ""),
         "last_error": str(raw.get("last_error", "") or ""),
         "updated_at": int(raw.get("updated_at", 0) or 0),
     }
@@ -152,6 +172,9 @@ def _empty_slack_settings() -> dict[str, object]:
         "configured": False,
         "notify_auto_block": True,
         "notify_high_severity": False,
+        "notify_min_severity": "high",
+        "quiet_hours_start": "",
+        "quiet_hours_end": "",
         "last_error": "",
         "updated_at": 0,
     }
@@ -163,8 +186,9 @@ async def _write_settings_row(values: tuple[object, ...]) -> None:
         await conn.execute(
             """
             INSERT OR REPLACE INTO slack_settings (
-                id, webhook_url, notify_auto_block, notify_high_severity, last_error, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?)
+                id, webhook_url, notify_auto_block, notify_high_severity, notify_min_severity,
+                quiet_hours_start, quiet_hours_end, last_error, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             values,
         )

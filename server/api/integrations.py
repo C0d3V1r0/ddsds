@@ -20,12 +20,18 @@ class TelegramConfigRequest(BaseModel):
     token: str = Field(default="", max_length=256)
     notify_auto_block: bool = True
     notify_high_severity: bool = False
+    notify_min_severity: str = Field(default="high", max_length=16)
+    quiet_hours_start: str = Field(default="", max_length=5)
+    quiet_hours_end: str = Field(default="", max_length=5)
 
 
 class SlackConfigRequest(BaseModel):
     webhook_url: str = Field(default="", max_length=1024)
     notify_auto_block: bool = True
     notify_high_severity: bool = False
+    notify_min_severity: str = Field(default="high", max_length=16)
+    quiet_hours_start: str = Field(default="", max_length=5)
+    quiet_hours_end: str = Field(default="", max_length=5)
 
 
 @router.get("/telegram")
@@ -39,6 +45,9 @@ async def save_telegram_config(payload: TelegramConfigRequest) -> dict[str, obje
         token=payload.token,
         notify_auto_block=payload.notify_auto_block,
         notify_high_severity=payload.notify_high_severity,
+        notify_min_severity=payload.notify_min_severity,
+        quiet_hours_start=payload.quiet_hours_start,
+        quiet_hours_end=payload.quiet_hours_end,
     )
 
 
@@ -58,6 +67,9 @@ async def save_slack_config(payload: SlackConfigRequest) -> dict[str, object]:
         webhook_url=payload.webhook_url,
         notify_auto_block=payload.notify_auto_block,
         notify_high_severity=payload.notify_high_severity,
+        notify_min_severity=payload.notify_min_severity,
+        quiet_hours_start=payload.quiet_hours_start,
+        quiet_hours_end=payload.quiet_hours_end,
     )
 
 

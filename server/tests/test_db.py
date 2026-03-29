@@ -1,7 +1,7 @@
 import pytest
 import pytest_asyncio
 import aiosqlite
-from db import init_db, get_db, enqueue_write, start_writer, stop_writer
+from db import init_db, enqueue_write, start_writer, stop_writer
 
 
 @pytest_asyncio.fixture

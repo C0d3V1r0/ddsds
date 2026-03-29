@@ -17,6 +17,20 @@ import (
 	"github.com/nullius/agent/ws"
 )
 
+// runBackground запускает фоновую горутину и не даёт случайной panic
+// уронить весь агент. Для системного демона это безопаснее, чем
+// оставлять панику без контекста.
+func runBackground(name string, worker func()) {
+	go func() {
+		defer func() {
+			if recoveredValue := recover(); recoveredValue != nil {
+				log.Printf("Паника в фоновой задаче %s: %v", name, recoveredValue)
+			}
+		}()
+		worker()
+	}()
+}
+
 func main() {
 	configPath := "/opt/nullius/config/nullius.yaml"
 	secretPath := "/opt/nullius/config/agent.key"
@@ -63,10 +77,10 @@ func main() {
 		},
 	)
 
-	go client.Run()
+	runBackground("ws_client", client.Run)
 
 	// Горутина сбора системных метрик (CPU, RAM, диск, сеть, load average)
-	go func() {
+	runBackground("metrics_collector", func() {
 		ticker := time.NewTicker(time.Duration(cfg.Agent.MetricsInterval) * time.Second)
 		defer ticker.Stop()
 		for {
@@ -86,10 +100,10 @@ func main() {
 				}
 			}
 		}
-	}()
+	})
 
 	// Горутина опроса systemd-сервисов (nginx, postgres, docker и т.д.)
-	go func() {
+	runBackground("services_collector", func() {
 		ticker := time.NewTicker(time.Duration(cfg.Agent.ServicesInterval) * time.Second)
 		defer ticker.Stop()
 		for {
@@ -108,12 +122,12 @@ func main() {
 				}
 			}
 		}
-	}()
+	})
 
 	// Запускаем tail логов — каждый файл отслеживается отдельной горутиной
 	tailer := collector.NewLogTailer(cfg.Agent.LogSources)
 	tailer.Start()
-	go func() {
+	runBackground("log_forwarder", func() {
 		for entry := range tailer.Entries() {
 			select {
 			case <-ctx.Done():
@@ -126,10 +140,10 @@ func main() {
 				})
 			}
 		}
-	}()
+	})
 
 	// Горутина сбора списка процессов из /proc
-	go func() {
+	runBackground("process_collector", func() {
 		ticker := time.NewTicker(time.Duration(cfg.Agent.ProcessesInterval) * time.Second)
 		defer ticker.Stop()
 		for {
@@ -148,7 +162,7 @@ func main() {
 				}
 			}
 		}
-	}()
+	})
 
 	// Ждём SIGTERM/SIGINT и корректно останавливаемся
 	sig := make(chan os.Signal, 1)

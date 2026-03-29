@@ -1,5 +1,5 @@
 // HTTP-клиент для взаимодействия с backend API
-import type { HealthStatus, Metrics, ServiceInfo, ProcessInfo, ProcessActionResult, LogEntry, SecurityEvent, SecurityIncident, BlockedIP, RiskScore, RiskHistoryPoint, LogFilters, ResponseAuditEntry, TelegramIntegrationSettings, SlackIntegrationSettings, SecurityModeSettings } from '../types';
+import type { HealthStatus, Metrics, ServiceInfo, ProcessInfo, ProcessActionResult, LogEntry, SecurityEvent, SecurityIncident, BlockedIP, RiskScore, RiskHistoryPoint, LogFilters, ResponseAuditEntry, TelegramIntegrationSettings, SlackIntegrationSettings, SecurityModeSettings, IncidentNote, IncidentDetail, SelfProtectionStatus, DeploymentStatus, MlStatus } from '../types';
 
 const BASE = import.meta.env.VITE_API_URL || '/api';
 const UI_TOKEN_STORAGE_KEY = 'nullius_api_token';
@@ -23,7 +23,7 @@ function headers(): HeadersInit {
 async function get<T>(path: string): Promise<T> {
   const resp = await fetch(`${BASE}${path}`, { headers: headers() });
   if (!resp.ok) throw new Error(`API error: ${resp.status}`);
-  return resp.json() as Promise<T>;
+  return (await resp.json()) as T;
 }
 
 async function post<T>(path: string, body?: unknown): Promise<T> {
@@ -33,34 +33,7 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!resp.ok) throw new Error(`API error: ${resp.status}`);
-  return resp.json() as Promise<T>;
-}
-
-// Ответ ML-модуля: готовность детектора аномалий и классификатора атак
-interface MlStatusResponse {
-  anomaly_detector: {
-    ready: boolean;
-    status: 'running' | 'pending' | 'training' | 'insufficient_data' | 'postponed' | 'failed';
-    reason_code: string;
-    samples_count: number;
-    filtered_samples_count: number;
-    discarded_samples_count: number;
-    required_samples: number;
-    event_count: number;
-    max_event_count: number;
-    maintenance_event_count: number;
-    host_profile: string;
-    filter_window_seconds: number;
-    maintenance_window_seconds: number;
-    dataset_quality_score: number;
-    dataset_quality_label: 'low' | 'medium' | 'high';
-    dataset_noise_label: 'clean' | 'stressed' | 'noisy';
-    weighted_event_pressure: number;
-    excluded_windows_count: number;
-    updated_at: number;
-    next_run_at: number | null;
-  };
-  attack_classifier: { ready: boolean };
+  return (await resp.json()) as T;
 }
 
 export const api = {
@@ -90,6 +63,14 @@ export const api = {
     ),
   securityIncidents: (eventType?: string, limit = 20) =>
     get<SecurityIncident[]>(`/security/incidents?event_type=${encodeURIComponent(eventType || '')}&limit=${limit}`),
+  securityIncidentDetail: (incidentId: string) =>
+    get<IncidentDetail>(`/security/incidents/${encodeURIComponent(incidentId)}`),
+  securityIncidentNotes: (incidentId: string, limit = 20) =>
+    get<IncidentNote[]>(`/security/incidents/${encodeURIComponent(incidentId)}/notes?limit=${limit}`),
+  addSecurityIncidentNote: (incidentId: string, note: string) =>
+    post<{ status: string }>(`/security/incidents/${encodeURIComponent(incidentId)}/notes`, { note }),
+  updateSecurityIncidentStatus: (incidentId: string, status: SecurityIncident['status']) =>
+    post<{ status: SecurityIncident['status'] }>(`/security/incidents/${encodeURIComponent(incidentId)}/status`, { status }),
   securityAudit: (traceId?: string, limit = 50) =>
     get<ResponseAuditEntry[]>(`/security/audit?trace_id=${encodeURIComponent(traceId || '')}&limit=${limit}`),
   blockedIPs: () => get<BlockedIP[]>('/security/blocked'),
@@ -99,23 +80,45 @@ export const api = {
   securityMode: () => get<SecurityModeSettings>('/security/mode'),
   saveSecurityMode: (operationMode: SecurityModeSettings['operation_mode']) =>
     post<SecurityModeSettings>('/security/mode', { operation_mode: operationMode }),
-  mlStatus: () => get<MlStatusResponse>('/ml/status'),
+  mlStatus: () => get<MlStatus>('/ml/status'),
   riskScore: () => get<RiskScore>('/risk'),
   riskHistory: (points = 24) => get<RiskHistoryPoint[]>(`/risk/history?points=${points}`),
+  selfProtection: () => get<SelfProtectionStatus>('/self-protection'),
+  deploymentStatus: () => get<DeploymentStatus>('/deployment'),
   telegramSettings: () => get<TelegramIntegrationSettings>('/integrations/telegram'),
-  saveTelegramSettings: (token: string, notifyAutoBlock: boolean, notifyHighSeverity: boolean) =>
+  saveTelegramSettings: (
+    token: string,
+    notifyAutoBlock: boolean,
+    notifyHighSeverity: boolean,
+    notifyMinSeverity: TelegramIntegrationSettings['notify_min_severity'],
+    quietHoursStart: string,
+    quietHoursEnd: string,
+  ) =>
     post<TelegramIntegrationSettings>('/integrations/telegram', {
       token,
       notify_auto_block: notifyAutoBlock,
       notify_high_severity: notifyHighSeverity,
+      notify_min_severity: notifyMinSeverity,
+      quiet_hours_start: quietHoursStart,
+      quiet_hours_end: quietHoursEnd,
     }),
   sendTelegramTest: () => post<{ status: string }>('/integrations/telegram/test'),
   slackSettings: () => get<SlackIntegrationSettings>('/integrations/slack'),
-  saveSlackSettings: (webhookUrl: string, notifyAutoBlock: boolean, notifyHighSeverity: boolean) =>
+  saveSlackSettings: (
+    webhookUrl: string,
+    notifyAutoBlock: boolean,
+    notifyHighSeverity: boolean,
+    notifyMinSeverity: SlackIntegrationSettings['notify_min_severity'],
+    quietHoursStart: string,
+    quietHoursEnd: string,
+  ) =>
     post<SlackIntegrationSettings>('/integrations/slack', {
       webhook_url: webhookUrl,
       notify_auto_block: notifyAutoBlock,
       notify_high_severity: notifyHighSeverity,
+      notify_min_severity: notifyMinSeverity,
+      quiet_hours_start: quietHoursStart,
+      quiet_hours_end: quietHoursEnd,
     }),
   sendSlackTest: () => post<{ status: string }>('/integrations/slack/test'),
 };

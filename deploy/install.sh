@@ -204,6 +204,19 @@ fi
 if [[ ! -f "$INSTALL_DIR/config/nullius.yaml" ]]; then
     cat > "$INSTALL_DIR/config/nullius.yaml" <<'YAML'
 # Конфигурация Nullius
+deployment:
+  role: primary
+  node_name: ""
+  primary_lock_path: /opt/nullius/data/primary.lock
+
+failover:
+  enabled: false
+  primary_api_url: ""
+  check_interval: 60
+  failure_threshold: 3
+  cooloff_seconds: 600
+  state_file: /opt/nullius/data/failover-state.json
+
 agent:
   metrics_interval: 5
   services_interval: 30
@@ -235,6 +248,11 @@ security:
   recon_probes:
     enabled: true
     action: review
+  web_login_abuse:
+    enabled: true
+    threshold: 5
+    window: 300
+    action: block
   port_scan:
     enabled: true
     window: 120
@@ -332,6 +350,8 @@ cp "$SCRIPT_DIR/nullius-agent.service" /etc/systemd/system/
 cp "$SCRIPT_DIR/nullius-api.service" /etc/systemd/system/
 cp "$SCRIPT_DIR/nullius-backup.service" /etc/systemd/system/
 cp "$SCRIPT_DIR/nullius-backup.timer" /etc/systemd/system/
+cp "$SCRIPT_DIR/nullius-failover-orchestrator.service" /etc/systemd/system/
+cp "$SCRIPT_DIR/nullius-failover-orchestrator.timer" /etc/systemd/system/
 systemctl daemon-reload
 
 # Nginx
@@ -376,12 +396,23 @@ cp "$SCRIPT_DIR/nullius-ctl" /usr/local/bin/nullius-ctl
 chmod 755 /usr/local/bin/nullius-ctl
 cp "$SCRIPT_DIR/nullius-backup.sh" /usr/local/bin/nullius-backup
 chmod 755 /usr/local/bin/nullius-backup
+cp "$SCRIPT_DIR/nullius-verify-backup.sh" /usr/local/bin/nullius-verify-backup
+chmod 755 /usr/local/bin/nullius-verify-backup
+cp "$SCRIPT_DIR/nullius-restore.sh" /usr/local/bin/nullius-restore
+chmod 755 /usr/local/bin/nullius-restore
+cp "$SCRIPT_DIR/nullius-promote-standby.sh" /usr/local/bin/nullius-promote-standby
+chmod 755 /usr/local/bin/nullius-promote-standby
+cp "$SCRIPT_DIR/nullius-failover-drill.sh" /usr/local/bin/nullius-failover-drill
+chmod 755 /usr/local/bin/nullius-failover-drill
+cp "$SCRIPT_DIR/nullius-failover-orchestrator.sh" /usr/local/bin/nullius-failover-orchestrator
+chmod 755 /usr/local/bin/nullius-failover-orchestrator
 
 # Запуск сервисов
-systemctl enable nullius-api nullius-agent nullius-backup.timer
+systemctl enable nullius-api nullius-agent nullius-backup.timer nullius-failover-orchestrator.timer
 systemctl restart nullius-api
 systemctl restart nullius-agent
 systemctl restart nullius-backup.timer
+systemctl restart nullius-failover-orchestrator.timer
 
 # ============================================================
 # 10. Logrotate

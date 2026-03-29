@@ -29,13 +29,16 @@ func (rb *RingBuffer) Push(data []byte) {
 	rb.mu.Lock()
 	defer rb.mu.Unlock()
 
+	// Буфер хранит свою копию сообщения, чтобы вызывающий код не мог
+	// случайно изменить уже поставленные в очередь байты.
+	clonedData := append([]byte(nil), data...)
 	idx := (rb.head + rb.count) % rb.cap
 	if rb.count == rb.cap {
 		rb.head = (rb.head + 1) % rb.cap
 	} else {
 		rb.count++
 	}
-	rb.items[idx] = data
+	rb.items[idx] = clonedData
 }
 
 // DrainAll извлекает все элементы в порядке добавления и очищает буфер.

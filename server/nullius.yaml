@@ -1,3 +1,16 @@
+deployment:
+  role: primary
+  node_name: ""
+  primary_lock_path: /opt/nullius/data/primary.lock
+
+failover:
+  enabled: false
+  primary_api_url: ""
+  check_interval: 60
+  failure_threshold: 3
+  cooloff_seconds: 600
+  state_file: /opt/nullius/data/failover-state.json
+
 agent:
   metrics_interval: 5
   services_interval: 30
@@ -26,6 +39,11 @@ security:
   recon_probes:
     enabled: true
     action: review
+  web_login_abuse:
+    enabled: true
+    threshold: 5
+    window: 300
+    action: block
   port_scan:
     enabled: true
     window: 120

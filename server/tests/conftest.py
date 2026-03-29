@@ -1,6 +1,5 @@
 import pytest
 import pytest_asyncio
-from httpx import AsyncClient, ASGITransport
 from pathlib import Path
 
 # Добавляем server/ в sys.path для корректного импорта модулей
@@ -10,7 +9,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 @pytest.fixture
 def test_config_path(tmp_path):
+    lock_path = tmp_path / "primary.lock"
     config = """
+deployment:
+  role: primary
+  node_name: test-primary
+  primary_lock_path: {lock_path}
 agent:
   metrics_interval: 5
   services_interval: 30
@@ -48,7 +52,7 @@ ml:
 api:
   require_bearer_auth: false
   require_ws_token: false
-"""
+""".format(lock_path=lock_path)
     p = tmp_path / "nullius.yaml"
     p.write_text(config)
     return str(p)
@@ -56,7 +60,12 @@ api:
 
 @pytest.fixture
 def secure_test_config_path(tmp_path):
+    lock_path = tmp_path / "secure-primary.lock"
     config = """
+deployment:
+  role: primary
+  node_name: secure-primary
+  primary_lock_path: {lock_path}
 agent:
   metrics_interval: 5
   services_interval: 30
@@ -95,8 +104,38 @@ api:
   require_ws_token: true
   token: test-api-token-for-tests
   ws_token: test-ws-token-for-tests
-"""
+""".format(lock_path=lock_path)
     p = tmp_path / "secure-nullius.yaml"
+    p.write_text(config)
+    return str(p)
+
+
+@pytest.fixture
+def standby_test_config_path(tmp_path):
+    lock_path = tmp_path / "standby-primary.lock"
+    config = """
+deployment:
+  role: standby
+  node_name: standby-node
+  primary_lock_path: {lock_path}
+agent:
+  metrics_interval: 5
+  services_interval: 30
+  log_sources: []
+security:
+  ssh_brute_force:
+    threshold: 3
+    window: 60
+    action: block
+    block_duration: 3600
+  auto_block: true
+ml:
+  anomaly_detection: false
+api:
+  require_bearer_auth: false
+  require_ws_token: false
+""".format(lock_path=lock_path)
+    p = tmp_path / "standby-nullius.yaml"
     p.write_text(config)
     return str(p)
 
@@ -115,6 +154,17 @@ async def reset_runtime_security_mode():
     yield
     security_mode._operation_mode = "auto_defend"
     security_mode._updated_at = 0
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def reset_runtime_deployment_role():
+    import deployment as deployment_runtime
+
+    deployment_runtime._deployment_role = "primary"
+    deployment_runtime._updated_at = 0
+    yield
+    deployment_runtime._deployment_role = "primary"
+    deployment_runtime._updated_at = 0
 
 
 @pytest_asyncio.fixture
@@ -148,4 +198,21 @@ async def secure_test_app(tmp_path, secure_test_config_path, monkeypatch):
         config_path=secure_test_config_path,
         db_path=db_path
     )
+    yield app
+
+
+@pytest_asyncio.fixture
+async def standby_test_app(tmp_path, standby_test_config_path, monkeypatch):
+    from main import create_app
+    from db import init_db
+    from api.auth import set_api_token
+
+    monkeypatch.setenv("NULLIUS_AGENT_SECRET", TEST_AGENT_SECRET)
+    db_path = str(tmp_path / "standby-test.db")
+    await init_db(db_path)
+    app = create_app(
+        config_path=standby_test_config_path,
+        db_path=db_path
+    )
+    set_api_token("")
     yield app

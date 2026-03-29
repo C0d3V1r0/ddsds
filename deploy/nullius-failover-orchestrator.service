@@ -1,0 +1,15 @@
+[Unit]
+Description=Nullius failover orchestration check
+After=network.target nullius-api.service
+Wants=network.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/bin/nullius-failover-orchestrator
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/nullius/data /opt/nullius/config /opt/nullius/backups
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes

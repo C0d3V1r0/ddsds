@@ -168,7 +168,14 @@ func (c *Client) connect() error {
 
 	// Heartbeat — пинг каждые 15с, чтобы соединение не убил прокси/NAT
 	c.heartbeatDone = make(chan struct{})
-	go c.heartbeat()
+	go func() {
+		defer func() {
+			if recoveredValue := recover(); recoveredValue != nil {
+				log.Printf("Паника в heartbeat агента: %v", recoveredValue)
+			}
+		}()
+		c.heartbeat()
+	}()
 
 	// Основной цикл чтения входящих команд от сервера
 	for {

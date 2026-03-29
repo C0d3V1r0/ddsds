@@ -10,8 +10,9 @@ from typing import AsyncGenerator
 from fastapi import Depends, FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from config import load_config
+from deployment import background_tasks_enabled, get_deployment_state, init_deployment_role, release_primary_lock
 from db import init_db, start_writer, stop_writer
-from api import health, metrics, services, processes, logs, security, integrations
+from api import health, metrics, services, processes, logs, security, integrations, self_protection, deployment
 from api import ml_status
 from api import risk
 from api.auth import require_auth, set_api_token
@@ -43,6 +44,11 @@ def create_app(
 ) -> FastAPI:
     """Создаёт и настраивает FastAPI-приложение."""
     config = load_config(config_path)
+    deployment_state = init_deployment_role(
+        str(config.deployment.role),
+        str(config.deployment.node_name),
+        str(config.deployment.primary_lock_path),
+    )
 
     detector = Detector(config.security)
     init_security(detector, config.security, config.ml)
@@ -60,6 +66,7 @@ def create_app(
         health.set_db_status(True)
         _writer_task = await start_writer(db_path)
         await init_operation_mode(str(config.security.operation_mode))
+        app.state.deployment = get_deployment_state()
 
         # Загрузка ML-моделей с диска или обучение classifier
         try:
@@ -146,13 +153,19 @@ def create_app(
                     )
                 await asyncio.sleep(training_period)
 
-        _bg_tasks = [
-            asyncio.create_task(_expiry_loop()),
-            asyncio.create_task(_retention_loop()),
-            asyncio.create_task(_risk_snapshot_loop()),
-            asyncio.create_task(_ml_training_loop()),
-            *start_integrations_loops(),
-        ]
+        if background_tasks_enabled():
+            _bg_tasks = [
+                asyncio.create_task(_expiry_loop()),
+                asyncio.create_task(_retention_loop()),
+                asyncio.create_task(_risk_snapshot_loop()),
+                asyncio.create_task(_ml_training_loop()),
+                *start_integrations_loops(),
+            ]
+        else:
+            logging.getLogger("nullius").warning(
+                "Nullius запущен в standby-режиме: mutating background loops и активная реакция отключены"
+            )
+            _bg_tasks = []
         yield
         for task in _bg_tasks:
             task.cancel()
@@ -161,6 +174,7 @@ def create_app(
         await stop_integrations_loops()
         if _writer_task:
             await stop_writer(_writer_task)
+        release_primary_lock()
 
     # Секрет агента: приоритет env > файл agent.key > генерация временного
     agent_secret = os.environ.get("NULLIUS_AGENT_SECRET", "")
@@ -214,7 +228,9 @@ def create_app(
     )
 
     app.state.config = config
+    app.state.config_path = config_path
     app.state.db_path = db_path
+    app.state.deployment = deployment_state
     # Health — публичный, остальные роутеры защищены Bearer-токеном
     app.include_router(health.router)
     app.include_router(metrics.router, dependencies=[Depends(require_auth)])
@@ -225,6 +241,8 @@ def create_app(
     app.include_router(integrations.router, dependencies=[Depends(require_auth)])
     app.include_router(ml_status.router, dependencies=[Depends(require_auth)])
     app.include_router(risk.router, dependencies=[Depends(require_auth)])
+    app.include_router(self_protection.router, dependencies=[Depends(require_auth)])
+    app.include_router(deployment.router, dependencies=[Depends(require_auth)])
 
     @app.websocket("/ws/agent")
     async def ws_agent(ws: WebSocket):

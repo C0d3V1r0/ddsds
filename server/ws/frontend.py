@@ -22,12 +22,16 @@ async def frontend_ws_handler(ws: WebSocket, api_token: str) -> None:
     if api_token:
         try:
             first_msg = await asyncio.wait_for(ws.receive_json(), timeout=5.0)
-            if not hmac.compare_digest(first_msg.get("token", ""), api_token):
-                await ws.close(code=4001, reason="Unauthorized")
-                return
-        except Exception:
+        except asyncio.TimeoutError:
             await ws.close(code=4001, reason="Unauthorized")
             return
+        except (TypeError, ValueError):
+            await ws.close(code=4001, reason="Unauthorized")
+            return
+
+        if not isinstance(first_msg, dict) or not hmac.compare_digest(str(first_msg.get("token", "")), api_token):
+                await ws.close(code=4001, reason="Unauthorized")
+                return
     _clients.add(ws)
     try:
         while True:

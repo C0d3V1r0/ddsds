@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Nullius failover orchestration checks
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+Persistent=true
+Unit=nullius-failover-orchestrator.service
+
+[Install]
+WantedBy=timers.target

@@ -1,4 +1,5 @@
 import pytest
+import time
 from httpx import ASGITransport, AsyncClient
 
 
@@ -36,6 +37,9 @@ async def test_save_telegram_settings_persists_bot_info(test_app, monkeypatch):
             "token": "123:token",
             "notify_auto_block": True,
             "notify_high_severity": True,
+            "notify_min_severity": "critical",
+            "quiet_hours_start": "23:00",
+            "quiet_hours_end": "07:00",
         })
 
     assert resp.status_code == 200
@@ -44,6 +48,9 @@ async def test_save_telegram_settings_persists_bot_info(test_app, monkeypatch):
     assert data["bot_username"] == "nullius_test_bot"
     assert data["chat_bound"] is False
     assert data["notify_high_severity"] is True
+    assert data["notify_min_severity"] == "critical"
+    assert data["quiet_hours_start"] == "23:00"
+    assert data["quiet_hours_end"] == "07:00"
 
 
 @pytest.mark.asyncio
@@ -85,7 +92,14 @@ async def test_telegram_poll_cycle_binds_chat_on_start(test_app, monkeypatch):
 
     monkeypatch.setattr("integrations.telegram._telegram_api", fake_telegram_api)
 
-    await configure_telegram_bot(token="123:token", notify_auto_block=True, notify_high_severity=False)
+    await configure_telegram_bot(
+        token="123:token",
+        notify_auto_block=True,
+        notify_high_severity=False,
+        notify_min_severity="high",
+        quiet_hours_start="",
+        quiet_hours_end="",
+    )
     await run_telegram_poll_cycle()
     settings = await get_telegram_settings()
 
@@ -117,7 +131,14 @@ async def test_telegram_test_endpoint_sends_message_when_chat_is_bound(test_app,
 
     monkeypatch.setattr("integrations.telegram._telegram_api", fake_telegram_api)
 
-    await configure_telegram_bot(token="123:token", notify_auto_block=True, notify_high_severity=False)
+    await configure_telegram_bot(
+        token="123:token",
+        notify_auto_block=True,
+        notify_high_severity=False,
+        notify_min_severity="high",
+        quiet_hours_start="",
+        quiet_hours_end="",
+    )
     await run_telegram_poll_cycle()
 
     transport = ASGITransport(app=test_app)
@@ -172,7 +193,14 @@ async def test_telegram_poll_cycle_handles_mode_and_blocked_commands(test_app, m
     await conn.commit()
     await conn.close()
 
-    await configure_telegram_bot(token="123:token", notify_auto_block=True, notify_high_severity=False)
+    await configure_telegram_bot(
+        token="123:token",
+        notify_auto_block=True,
+        notify_high_severity=False,
+        notify_min_severity="high",
+        quiet_hours_start="",
+        quiet_hours_end="",
+    )
     await set_operation_mode("assist")
     await run_telegram_poll_cycle()
 
@@ -200,6 +228,9 @@ async def test_save_slack_settings_persists_webhook(test_app):
             "webhook_url": "https://hooks.slack.com/services/T000/B000/XXXX",
             "notify_auto_block": True,
             "notify_high_severity": True,
+            "notify_min_severity": "medium",
+            "quiet_hours_start": "22:00",
+            "quiet_hours_end": "06:00",
         })
 
     assert resp.status_code == 200
@@ -207,6 +238,9 @@ async def test_save_slack_settings_persists_webhook(test_app):
     assert data["configured"] is True
     assert data["notify_auto_block"] is True
     assert data["notify_high_severity"] is True
+    assert data["notify_min_severity"] == "medium"
+    assert data["quiet_hours_start"] == "22:00"
+    assert data["quiet_hours_end"] == "06:00"
 
 
 @pytest.mark.asyncio
@@ -222,6 +256,9 @@ async def test_slack_test_endpoint_sends_message(test_app, monkeypatch):
         webhook_url="https://hooks.slack.com/services/T000/B000/XXXX",
         notify_auto_block=True,
         notify_high_severity=False,
+        notify_min_severity="high",
+        quiet_hours_start="",
+        quiet_hours_end="",
     )
 
     transport = ASGITransport(app=test_app)
@@ -276,7 +313,14 @@ async def test_telegram_poll_cycle_handles_block_and_unblock_commands(test_app, 
 
     monkeypatch.setattr("integrations.telegram._telegram_api", fake_telegram_api)
 
-    await configure_telegram_bot(token="123:token", notify_auto_block=True, notify_high_severity=False)
+    await configure_telegram_bot(
+        token="123:token",
+        notify_auto_block=True,
+        notify_high_severity=False,
+        notify_min_severity="high",
+        quiet_hours_start="",
+        quiet_hours_end="",
+    )
     await run_telegram_poll_cycle()
 
     conn = await get_db()
@@ -309,3 +353,33 @@ async def test_slack_payload_contains_recommendation_and_trace(monkeypatch):
     rendered = str(payload["blocks"])
     assert "auto_block_applied" in rendered
     assert "trace-123" in rendered
+
+
+def test_notification_policy_respects_threshold_and_quiet_hours():
+    from integrations.policy import should_notify_by_policy
+
+    settings = {
+        "notify_auto_block": True,
+        "notify_high_severity": True,
+        "notify_min_severity": "critical",
+        "quiet_hours_start": "23:00",
+        "quiet_hours_end": "07:00",
+    }
+
+    assert should_notify_by_policy(settings, {"action_taken": "auto_block", "severity": "medium"}) is True
+    assert should_notify_by_policy(settings, {"action_taken": "logged", "severity": "high"}) is False
+
+
+def test_notification_policy_suppresses_routine_events_in_quiet_hours(monkeypatch):
+    from integrations import policy
+
+    monkeypatch.setattr(policy.time, "localtime", lambda _: time.struct_time((2026, 3, 29, 1, 0, 0, 6, 88, -1)))
+    settings = {
+        "notify_auto_block": True,
+        "notify_high_severity": True,
+        "notify_min_severity": "medium",
+        "quiet_hours_start": "00:00",
+        "quiet_hours_end": "02:00",
+    }
+
+    assert policy.should_notify_by_policy(settings, {"action_taken": "logged", "severity": "critical"}, now=3600) is False

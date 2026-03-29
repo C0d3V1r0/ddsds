@@ -45,7 +45,15 @@ func (lt *LogTailer) Entries() <-chan LogEntry {
 // Start запускает горутину tail-а для каждого файла из конфига
 func (lt *LogTailer) Start() {
 	for _, f := range lt.files {
-		go lt.tailFile(f)
+		path := f
+		go func() {
+			defer func() {
+				if recoveredValue := recover(); recoveredValue != nil {
+					log.Printf("Паника в tailer для %s: %v", path, recoveredValue)
+				}
+			}()
+			lt.tailFile(path)
+		}()
 	}
 }
 

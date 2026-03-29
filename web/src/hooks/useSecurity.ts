@@ -26,6 +26,24 @@ export function useSecurityIncidents(eventType?: string) {
   });
 }
 
+export function useSecurityIncidentDetail(incidentId?: string) {
+  return useQuery({
+    queryKey: ['securityIncidentDetail', incidentId],
+    queryFn: () => api.securityIncidentDetail(incidentId || ''),
+    enabled: !!incidentId,
+    refetchInterval: SECURITY_REFRESH_MS,
+  });
+}
+
+export function useIncidentNotes(incidentId?: string, limit = 20) {
+  return useQuery({
+    queryKey: ['incidentNotes', incidentId, limit],
+    queryFn: () => api.securityIncidentNotes(incidentId || '', limit),
+    enabled: !!incidentId,
+    refetchInterval: SECURITY_REFRESH_MS,
+  });
+}
+
 export function useSecurityAudit(traceId?: string) {
   return useQuery({
     queryKey: ['securityAudit', traceId],
@@ -60,6 +78,32 @@ export function useUnblockIP() {
     mutationFn: (ip: string) => api.unblockIP(ip),
     onSuccess: () => {
       invalidateSecurityQueries(qc, true);
+    },
+  });
+}
+
+export function useUpdateIncidentStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ incidentId, status }: { incidentId: string; status: 'new' | 'investigating' | 'resolved' }) =>
+      api.updateSecurityIncidentStatus(incidentId, status),
+    onSuccess: (_, variables) => {
+      invalidateSecurityQueries(qc, true);
+      qc.invalidateQueries({ queryKey: ['securityIncidentDetail', variables.incidentId] });
+      qc.invalidateQueries({ queryKey: ['incidentNotes', variables.incidentId] });
+    },
+  });
+}
+
+export function useAddIncidentNote() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ incidentId, note }: { incidentId: string; note: string }) =>
+      api.addSecurityIncidentNote(incidentId, note),
+    onSuccess: (_, variables) => {
+      qc.invalidateQueries({ queryKey: ['incidentNotes', variables.incidentId] });
+      qc.invalidateQueries({ queryKey: ['securityIncidents'] });
+      qc.invalidateQueries({ queryKey: ['securityIncidentDetail', variables.incidentId] });
     },
   });
 }

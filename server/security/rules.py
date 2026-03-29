@@ -24,6 +24,13 @@ WEB_ATTACK_PATTERNS = {
     "path_traversal": re.compile(
         r"(\.\./|\.\.\\|%2e%2e%2f|%2e%2e/|\.\.%2f){2,}",
     ),
+    "command_injection": re.compile(
+        r"(?i)(;\s*(curl|wget|bash|sh|nc|netcat|cat\s+/etc/passwd|id|uname|whoami)"
+        r"|\|\s*(curl|wget|bash|sh|nc|netcat|cat\s+/etc/passwd|id|uname|whoami)"
+        r"|&&\s*(curl|wget|bash|sh|nc|netcat|cat\s+/etc/passwd|id|uname|whoami)"
+        r"|\$\((curl|wget|bash|sh|nc|netcat|cat\s+/etc/passwd|id|uname|whoami)"
+        r"|`(curl|wget|bash|sh|nc|netcat|cat\s+/etc/passwd|id|uname|whoami))",
+    ),
 }
 
 # Разведка веб-приложения: характерные чувствительные пути и инструменты сканирования.
@@ -36,6 +43,12 @@ SCANNER_TOOL_PATTERNS = (
 
 # Извлечение IP из начала строки лога nginx/apache
 NGINX_LOG_IP_PATTERN = re.compile(r"^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})")
+WEB_ACCESS_LOG_PATTERN = re.compile(
+    r'^(?P<ip>\d{1,3}(?:\.\d{1,3}){3})\s+\S+\s+\S+\s+\[[^\]]+\]\s+"(?P<method>[A-Z]+)\s+(?P<path>\S+)[^"]*"\s+(?P<status>\d{3})'
+)
+WEB_LOGIN_PATH_PATTERN = re.compile(
+    r"(?i)^(/wp-login\.php\b|/login\b|/signin\b|/sign-in\b|/auth/login\b|/administrator\b|/admin/login\b)"
+)
 
 # Firewall / kernel / UFW / nftables: эти записи позволяют увидеть сканирование портов
 # по числу уникальных destination ports в коротком временном окне.
